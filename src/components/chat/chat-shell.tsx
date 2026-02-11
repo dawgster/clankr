@@ -31,9 +31,10 @@ function TopBar() {
 
 function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isMessagesRoute = pathname.startsWith("/messages");
+  const isChatRoute =
+    pathname.startsWith("/messages") || pathname.startsWith("/agent-chats");
 
-  if (isMessagesRoute) {
+  if (isChatRoute) {
     return (
       <>
         <NavDrawer />

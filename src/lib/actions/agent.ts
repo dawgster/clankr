@@ -90,6 +90,117 @@ export async function disconnectAgent() {
   });
 }
 
+export async function getAgentConversations() {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) return [];
+
+  return db.agentConversation.findMany({
+    where: { externalAgentId: agent.id },
+    include: {
+      connectionRequest: {
+        select: {
+          id: true,
+          intent: true,
+          category: true,
+          status: true,
+          fromUser: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+        },
+      },
+      negotiation: {
+        select: {
+          id: true,
+          offerPrice: true,
+          status: true,
+          listing: { select: { title: true } },
+          buyer: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+          seller: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+        },
+      },
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      _count: { select: { messages: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getAgentConversation(conversationId: string) {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) return null;
+
+  return db.agentConversation.findFirst({
+    where: { id: conversationId, externalAgentId: agent.id },
+    include: {
+      connectionRequest: {
+        select: {
+          id: true,
+          intent: true,
+          category: true,
+          status: true,
+          fromUser: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+        },
+      },
+      negotiation: {
+        select: {
+          id: true,
+          offerPrice: true,
+          status: true,
+          listing: { select: { title: true } },
+          buyer: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+          seller: {
+            select: {
+              username: true,
+              profile: { select: { displayName: true, avatarUrl: true } },
+            },
+          },
+        },
+      },
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+      events: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      },
+    },
+  });
+}
+
 export async function getAgentEvents() {
   const user = await requireUser();
 
