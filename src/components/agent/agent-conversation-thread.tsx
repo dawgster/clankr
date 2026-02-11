@@ -72,10 +72,13 @@ function conversationTitle(conv: ConversationDetail): string {
     const name =
       conv.connectionRequest.fromUser.profile?.displayName ||
       conv.connectionRequest.fromUser.username;
-    return `Connection request from ${name}`;
+    return `${name}'s Clankr`;
   }
   if (conv.negotiation) {
-    return `Negotiation: ${conv.negotiation.listing.title}`;
+    const name =
+      conv.negotiation.buyer.profile?.displayName ||
+      conv.negotiation.buyer.username;
+    return `${name}'s Clankr`;
   }
   return "Agent Conversation";
 }
