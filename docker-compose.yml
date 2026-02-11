@@ -1,0 +1,20 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: clankr
+      POSTGRES_PASSWORD: clankr
+      POSTGRES_DB: clankr
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: pg_isready -U clankr -d clankr
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

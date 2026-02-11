@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────
+// User & Profile
+// ──────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  username  String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile       Profile?
+  externalAgent ExternalAgent?
+
+  sentRequests     ConnectionRequest[] @relation("RequestFrom")
+  receivedRequests ConnectionRequest[] @relation("RequestTo")
+
+  connectionsA Connection[] @relation("ConnectionA")
+  connectionsB Connection[] @relation("ConnectionB")
+
+  sentMessages    DirectMessage[] @relation("MessageSender")
+
+  threadParticipations MessageThreadParticipant[]
+
+  listings     Listing[]
+  buyerNegs    Negotiation[] @relation("NegBuyer")
+  sellerNegs   Negotiation[] @relation("NegSeller")
+
+  notifications Notification[]
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName String
+  bio         String   @default("")
+  avatarUrl   String?
+  interests   String[] @default([])
+  lookingFor  String[] @default([])
+  links       Json     @default("[]")
+  intent          String?
+  intentEmbedding Unsupported("vector(1536)")?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// External Agent (BYOA)
+// ──────────────────────────────────────────────
+
+enum ExternalAgentStatus {
+  UNCLAIMED
+  ACTIVE
+  SUSPENDED
+}
+
+model ExternalAgent {
+  id             String              @id @default(cuid())
+  name           String
+  apiKeyHash     String              @unique
+  apiKeyPrefix   String
+  claimToken     String?             @unique
+  userId         String?             @unique
+  user           User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gatewayUrl     String?
+  gatewayToken   String?
+  webhookEnabled Boolean             @default(false)
+  status         ExternalAgentStatus @default(UNCLAIMED)
+  lastSeenAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  conversations AgentConversation[]
+  events        AgentEvent[]
+}
+
+enum AgentEventType {
+  CONNECTION_REQUEST
+  NEGOTIATION_OFFER
+  NEGOTIATION_TURN
+}
+
+enum AgentEventStatus {
+  PENDING
+  DELIVERED
+  DECIDED
+  EXPIRED
+}
+
+model AgentEvent {
+  id                  String           @id @default(cuid())
+  externalAgentId     String
+  externalAgent       ExternalAgent    @relation(fields: [externalAgentId], references: [id], onDelete: Cascade)
+  type                AgentEventType
+  status              AgentEventStatus @default(PENDING)
+  payload             Json
+  decision            Json?
+  connectionRequestId String?
+  connectionRequest   ConnectionRequest? @relation(fields: [connectionRequestId], references: [id], onDelete: Cascade)
+  negotiationId       String?
+  negotiation         Negotiation?     @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  conversationId      String?
+  conversation        AgentConversation? @relation(fields: [conversationId], references: [id])
+  webhookAttempts     Int              @default(0)
+  lastWebhookAt       DateTime?
+  expiresAt           DateTime
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// Agent Conversations
+// ──────────────────────────────────────────────
+
+enum ConversationStatus {
+  ACTIVE
+  DECIDED
+  EXPIRED
+}
+
+model AgentConversation {
+  id                  String             @id @default(cuid())
+  externalAgentId     String
+  externalAgent       ExternalAgent      @relation(fields: [externalAgentId], references: [id], onDelete: Cascade)
+  connectionRequestId String?
+  connectionRequest   ConnectionRequest? @relation(fields: [connectionRequestId], references: [id], onDelete: Cascade)
+  negotiationId       String?
+  negotiation         Negotiation?       @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  status              ConversationStatus @default(ACTIVE)
+  decision            String?
+  confidence          Float?
+  reason              String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  messages AgentMessage[]
+  events   AgentEvent[]
+}
+
+enum MessageRole {
+  USER
+  AGENT
+  SYSTEM
+}
+
+model AgentMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  tokenCount     Int?
+  createdAt      DateTime          @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Connections
+// ──────────────────────────────────────────────
+
+enum RequestStatus {
+  PENDING
+  IN_CONVERSATION
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum RequestCategory {
+  NETWORKING
+  COLLABORATION
+  HIRING
+  BUSINESS
+  SOCIAL
+  OTHER
+}
+
+model ConnectionRequest {
+  id         String          @id @default(cuid())
+  fromUserId String
+  fromUser   User            @relation("RequestFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   String
+  toUser     User            @relation("RequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  category   RequestCategory @default(OTHER)
+  intent     String
+  status     RequestStatus   @default(PENDING)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  conversations AgentConversation[]
+  events        AgentEvent[]
+
+  @@unique([fromUserId, toUserId])
+}
+
+model Connection {
+  id        String   @id @default(cuid())
+  userAId   String
+  userA     User     @relation("ConnectionA", fields: [userAId], references: [id], onDelete: Cascade)
+  userBId   String
+  userB     User     @relation("ConnectionB", fields: [userBId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userAId, userBId])
+}
+
+// ──────────────────────────────────────────────
+// Direct Messages
+// ──────────────────────────────────────────────
+
+model MessageThread {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants MessageThreadParticipant[]
+  messages     DirectMessage[]
+}
+
+model MessageThreadParticipant {
+  id        String        @id @default(cuid())
+  threadId  String
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime      @default(now())
+
+  @@unique([threadId, userId])
+}
+
+model DirectMessage {
+  id        String        @id @default(cuid())
+  threadId  String
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime      @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Marketplace
+// ──────────────────────────────────────────────
+
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  ARCHIVED
+}
+
+model Listing {
+  id          String        @id @default(cuid())
+  sellerId    String
+  seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  price       Float
+  images      String[]      @default([])
+  tags        String[]      @default([])
+  status      ListingStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  negotiations Negotiation[]
+}
+
+enum NegotiationStatus {
+  ACTIVE
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Negotiation {
+  id         String            @id @default(cuid())
+  listingId  String
+  listing    Listing           @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId    String
+  buyer      User              @relation("NegBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId   String
+  seller     User              @relation("NegSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  offerPrice Float
+  status     NegotiationStatus @default(ACTIVE)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  conversations AgentConversation[]
+  events        AgentEvent[]
+}
+
+// ──────────────────────────────────────────────
+// Notifications
+// ──────────────────────────────────────────────
+
+enum NotificationType {
+  CONNECTION_REQUEST
+  CONNECTION_ACCEPTED
+  CONNECTION_REJECTED
+  AGENT_DECISION
+  NEW_MESSAGE
+  NEGOTIATION_UPDATE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+}
