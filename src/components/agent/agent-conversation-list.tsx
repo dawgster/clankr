@@ -10,6 +10,7 @@ interface ConversationItem {
   id: string;
   status: string;
   decision: string | null;
+  chatThreadId: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   connectionRequest: {
@@ -36,6 +37,11 @@ interface ConversationItem {
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
   } | null;
+  peerUser: {
+    id: string;
+    username: string;
+    profile: { displayName: string | null; avatarUrl: string | null } | null;
+  } | null;
   messages: { content: string; createdAt: Date | string }[];
   _count: { messages: number };
 }
@@ -58,6 +64,11 @@ function conversationLabel(conv: ConversationItem): string {
       conv.negotiation.buyer.profile?.displayName ||
       conv.negotiation.buyer.username;
     return `${name}'s Clankr`;
+  }
+  if (conv.peerUser) {
+    const name =
+      conv.peerUser.profile?.displayName || conv.peerUser.username;
+    return `Chat with ${name}'s Clankr`;
   }
   return "Agent Conversation";
 }
@@ -86,6 +97,15 @@ function conversationAvatar(conv: ConversationItem): {
           conv.negotiation.buyer.profile?.displayName ||
           conv.negotiation.buyer.username
         )
+          ?.slice(0, 2)
+          .toUpperCase() || "??",
+    };
+  }
+  if (conv.peerUser) {
+    return {
+      url: conv.peerUser.profile?.avatarUrl || null,
+      fallback:
+        (conv.peerUser.profile?.displayName || conv.peerUser.username)
           ?.slice(0, 2)
           .toUpperCase() || "??",
     };

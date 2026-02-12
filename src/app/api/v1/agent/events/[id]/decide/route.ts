@@ -67,6 +67,7 @@ export async function POST(
         event.negotiation.listing,
       );
     }
+    // NEW_MESSAGE: ACCEPT = acknowledge, no further processing needed
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -98,7 +98,7 @@ export async function getAgentConversations() {
   });
   if (!agent) return [];
 
-  return db.agentConversation.findMany({
+  const conversations = await db.agentConversation.findMany({
     where: { externalAgentId: agent.id },
     include: {
       connectionRequest: {
@@ -143,6 +143,30 @@ export async function getAgentConversations() {
     },
     orderBy: { updatedAt: "desc" },
   });
+
+  // Enrich chat conversations with peer user info
+  const peerUserIds = conversations
+    .filter((c) => c.chatThreadId && c.peerUserId)
+    .map((c) => c.peerUserId!);
+
+  const peerUsers =
+    peerUserIds.length > 0
+      ? await db.user.findMany({
+          where: { id: { in: peerUserIds } },
+          select: {
+            id: true,
+            username: true,
+            profile: { select: { displayName: true, avatarUrl: true } },
+          },
+        })
+      : [];
+
+  const peerUserMap = new Map(peerUsers.map((u) => [u.id, u]));
+
+  return conversations.map((c) => ({
+    ...c,
+    peerUser: c.peerUserId ? (peerUserMap.get(c.peerUserId) ?? null) : null,
+  }));
 }
 
 export async function getAgentConversation(conversationId: string) {
@@ -153,7 +177,7 @@ export async function getAgentConversation(conversationId: string) {
   });
   if (!agent) return null;
 
-  return db.agentConversation.findFirst({
+  const conversation = await db.agentConversation.findFirst({
     where: { id: conversationId, externalAgentId: agent.id },
     include: {
       connectionRequest: {
@@ -199,6 +223,21 @@ export async function getAgentConversation(conversationId: string) {
       },
     },
   });
+
+  if (!conversation) return null;
+
+  const peerUser = conversation.peerUserId
+    ? await db.user.findUnique({
+        where: { id: conversation.peerUserId },
+        select: {
+          id: true,
+          username: true,
+          profile: { select: { displayName: true, avatarUrl: true } },
+        },
+      })
+    : null;
+
+  return { ...conversation, peerUser };
 }
 
 export async function getAgentEvents() {

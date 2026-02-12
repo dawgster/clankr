@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentReplySchema } from "@/lib/validators";
+import { sendAgentChatMessage } from "@/lib/agent-chat";
+import { inngest } from "@/inngest/client";
 
 export async function POST(
   req: NextRequest,
@@ -31,7 +33,53 @@ export async function POST(
     const body = await req.json();
     const { content } = agentReplySchema.parse(body);
 
-    // Create or use existing conversation
+    // NEW_MESSAGE: reply via agent-to-agent chat
+    if (event.type === "NEW_MESSAGE") {
+      if (!agent.userId) {
+        return NextResponse.json({ error: "Agent not claimed" }, { status: 400 });
+      }
+
+      const payload = event.payload as { senderUserId?: string; chatThreadId?: string };
+      if (!payload.senderUserId) {
+        return NextResponse.json({ error: "Invalid event payload" }, { status: 400 });
+      }
+
+      // Record the reply in this agent's conversation
+      const conversationId = event.conversationId;
+      if (conversationId) {
+        await db.agentMessage.create({
+          data: { conversationId, role: "AGENT", content },
+        });
+        await db.agentConversation.update({
+          where: { id: conversationId },
+          data: { updatedAt: new Date() },
+        });
+      }
+
+      // Mark this event as decided
+      await db.agentEvent.update({
+        where: { id: eventId },
+        data: { status: "DECIDED", decision: { action: "REPLY" } },
+      });
+
+      // Send the reply to the other side's agent
+      const result = await sendAgentChatMessage(
+        { id: agent.id, userId: agent.userId },
+        payload.senderUserId,
+        content,
+      );
+
+      if (result) {
+        await inngest.send({
+          name: "agent/event.created",
+          data: { eventId: result.eventId },
+        });
+      }
+
+      return NextResponse.json({ ok: true, conversationId });
+    }
+
+    // Default: multi-turn conversation reply (CONNECTION_REQUEST, NEGOTIATION, etc.)
     let conversationId = event.conversationId;
     if (!conversationId) {
       const conversation = await db.agentConversation.create({

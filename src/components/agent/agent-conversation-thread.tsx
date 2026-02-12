@@ -21,6 +21,7 @@ interface ConversationDetail {
   decision: string | null;
   confidence: number | null;
   reason: string | null;
+  chatThreadId: string | null;
   createdAt: Date | string;
   connectionRequest: {
     id: string;
@@ -45,6 +46,11 @@ interface ConversationDetail {
       username: string;
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
+  } | null;
+  peerUser: {
+    id: string;
+    username: string;
+    profile: { displayName: string | null; avatarUrl: string | null } | null;
   } | null;
   messages: AgentMessageItem[];
 }
@@ -79,6 +85,11 @@ function conversationTitle(conv: ConversationDetail): string {
       conv.negotiation.buyer.profile?.displayName ||
       conv.negotiation.buyer.username;
     return `${name}'s Clankr`;
+  }
+  if (conv.peerUser) {
+    const name =
+      conv.peerUser.profile?.displayName || conv.peerUser.username;
+    return `Chat with ${name}'s Clankr`;
   }
   return "Agent Conversation";
 }

@@ -91,6 +91,7 @@ enum AgentEventType {
   CONNECTION_REQUEST
   NEGOTIATION_OFFER
   NEGOTIATION_TURN
+  NEW_MESSAGE
 }
 
 enum AgentEventStatus {
@@ -139,6 +140,8 @@ model AgentConversation {
   connectionRequest   ConnectionRequest? @relation(fields: [connectionRequestId], references: [id], onDelete: Cascade)
   negotiationId       String?
   negotiation         Negotiation?       @relation(fields: [negotiationId], references: [id], onDelete: Cascade)
+  chatThreadId        String?
+  peerUserId          String?
   status              ConversationStatus @default(ACTIVE)
   decision            String?
   confidence          Float?

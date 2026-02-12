@@ -9,6 +9,7 @@ interface ConversationItem {
   id: string;
   status: string;
   decision: string | null;
+  chatThreadId: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
   connectionRequest: {
@@ -34,6 +35,11 @@ interface ConversationItem {
       username: string;
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
+  } | null;
+  peerUser: {
+    id: string;
+    username: string;
+    profile: { displayName: string | null; avatarUrl: string | null } | null;
   } | null;
   messages: { content: string; createdAt: Date | string }[];
   _count: { messages: number };
