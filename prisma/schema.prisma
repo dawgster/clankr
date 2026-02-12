@@ -52,7 +52,7 @@ model Profile {
   lookingFor  String[] @default([])
   links       Json     @default("[]")
   intent          String?
-  intentEmbedding Unsupported("vector(384)")?
+  intentEmbedding Unsupported("vector(1536)")?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

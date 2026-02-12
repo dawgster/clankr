@@ -3,7 +3,7 @@ import { z } from "zod";
 export const profileSchema = z.object({
   displayName: z.string().min(1).max(100),
   bio: z.string().max(500).optional().default(""),
-  intent: z.string().max(1000).optional().default(""),
+  intent: z.string().min(1, "Intent is required").max(1000),
   interests: z.array(z.string().max(50)).max(20).optional().default([]),
   lookingFor: z.array(z.string().max(50)).max(10).optional().default([]),
   links: z

@@ -78,7 +78,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="intent">Intent</Label>
+              <Label htmlFor="intent">Intent *</Label>
               <Textarea
                 id="intent"
                 value={intent}
@@ -86,6 +86,7 @@ export default function OnboardingPage() {
                 placeholder="Describe who you are and what you're looking for..."
                 rows={3}
                 maxLength={1000}
+                required
               />
               <p className="text-xs text-muted-foreground">
                 This helps match you with relevant people on the discover page.
