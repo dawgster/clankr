@@ -15,7 +15,11 @@ export async function POST(
 
     const event = await db.agentEvent.findUnique({
       where: { id: eventId },
-      include: { conversation: true },
+      include: {
+        conversation: true,
+        connectionRequest: { select: { fromUserId: true, toUserId: true } },
+        negotiation: { select: { buyerId: true, sellerId: true } },
+      },
     });
 
     if (!event) {
@@ -105,6 +109,40 @@ export async function POST(
         content,
       },
     });
+
+    // Forward the reply to the other side's agent
+    if (agent.userId) {
+      let peerUserId: string | null = null;
+
+      if (event.connectionRequest) {
+        // If this agent is the recipient (toUser), forward to the requester (fromUser)
+        // If this agent is the requester, forward to the recipient
+        peerUserId =
+          event.connectionRequest.toUserId === agent.userId
+            ? event.connectionRequest.fromUserId
+            : event.connectionRequest.toUserId;
+      } else if (event.negotiation) {
+        peerUserId =
+          event.negotiation.sellerId === agent.userId
+            ? event.negotiation.buyerId
+            : event.negotiation.sellerId;
+      }
+
+      if (peerUserId) {
+        const result = await sendAgentChatMessage(
+          { id: agent.id, userId: agent.userId },
+          peerUserId,
+          content,
+        );
+
+        if (result) {
+          await inngest.send({
+            name: "agent/event.created",
+            data: { eventId: result.eventId },
+          });
+        }
+      }
+    }
 
     return NextResponse.json({ ok: true, conversationId });
   } catch (err) {
