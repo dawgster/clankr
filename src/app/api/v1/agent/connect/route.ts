@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { connectionRequestSchema } from "@/lib/validators";
 import { inngest } from "@/inngest/client";
+import { ensureAgentEventForRequest } from "@/lib/connection-events";
 
 export async function POST(req: NextRequest) {
   try {
@@ -78,10 +79,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Create agent event synchronously so the target user's agent can
+    // see the request immediately (instead of waiting for Inngest).
+    const result = await ensureAgentEventForRequest(request.id);
+
+    // Fire Inngest events: the connection/request.created event acts as
+    // a fallback (evaluate-connection is idempotent), and agent/event.created
+    // triggers webhook delivery if the target has webhooks enabled.
     await inngest.send({
       name: "connection/request.created",
       data: { requestId: request.id },
     });
+
+    if (result.type === "event_created") {
+      await inngest.send({
+        name: "agent/event.created",
+        data: { eventId: result.eventId },
+      });
+    }
 
     return NextResponse.json({ ok: true, requestId: request.id });
   } catch (err) {
