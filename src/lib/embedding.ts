@@ -9,10 +9,13 @@ function getClient() {
   return _openai;
 }
 
+export const EMBEDDING_DIMENSIONS = 1536;
+
 export async function generateEmbedding(text: string): Promise<number[]> {
   const response = await getClient().embeddings.create({
     model: "text-embedding-3-small",
     input: text.trim(),
+    dimensions: EMBEDDING_DIMENSIONS,
   });
   return response.data[0].embedding;
 }
