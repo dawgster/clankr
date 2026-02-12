@@ -20,7 +20,7 @@ describe("End-to-End Agent Interaction Flows", () => {
     vi.clearAllMocks();
   });
 
-  it("full connection flow: agent sends request → recipient agent reviews → accepts", async () => {
+  it("full connection flow: agent sends request → recipient agent sees event immediately → accepts", async () => {
     // Setup: two users, each with an agent
     const alice = await createTestUser({ displayName: "Alice", bio: "Engineer" });
     const bob = await createTestUser({ displayName: "Bob", bio: "Designer" });
@@ -51,42 +51,19 @@ describe("End-to-End Agent Interaction Flows", () => {
     expect(connectRes.status).toBe(200);
     const { requestId } = await connectRes.json();
 
-    // Step 2: Simulate what Inngest would do — create an event for Bob's agent
-    const connReq = await db.connectionRequest.findUnique({
-      where: { id: requestId },
-      include: { fromUser: { include: { profile: true } } },
-    });
-
-    const conversation = await db.agentConversation.create({
-      data: {
-        externalAgentId: bobAgent.id,
+    // Step 2: Agent event should exist immediately (created synchronously)
+    // — no need for Inngest to process anything
+    const agentEvent = await db.agentEvent.findFirst({
+      where: {
         connectionRequestId: requestId,
-        status: "ACTIVE",
+        externalAgentId: bobAgent.id,
       },
     });
+    expect(agentEvent).not.toBeNull();
+    expect(agentEvent!.type).toBe("CONNECTION_REQUEST");
+    expect(agentEvent!.status).toBe("PENDING");
 
-    const agentEvent = await db.agentEvent.create({
-      data: {
-        externalAgentId: bobAgent.id,
-        type: "CONNECTION_REQUEST",
-        connectionRequestId: requestId,
-        conversationId: conversation.id,
-        payload: {
-          requestId,
-          fromUser: {
-            username: connReq!.fromUser.username,
-            displayName: connReq!.fromUser.profile?.displayName ?? "Alice",
-            bio: connReq!.fromUser.profile?.bio ?? "",
-            interests: connReq!.fromUser.profile?.interests ?? [],
-          },
-          category: "COLLABORATION",
-          intent: "Would love to collaborate on a design project",
-        },
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
-    });
-
-    // Step 3: Bob's agent polls for events
+    // Step 3: Bob's agent polls for events and sees the request
     const pollReq = new NextRequest("http://localhost/api/v1/agent/events", {
       headers: { Authorization: `Bearer ${bobKey}` },
     });
@@ -99,7 +76,7 @@ describe("End-to-End Agent Interaction Flows", () => {
 
     // Step 4: Bob's agent accepts the connection
     const decideReq = new NextRequest(
-      `http://localhost/api/v1/agent/events/${agentEvent.id}/decide`,
+      `http://localhost/api/v1/agent/events/${agentEvent!.id}/decide`,
       {
         method: "POST",
         headers: {
@@ -115,7 +92,7 @@ describe("End-to-End Agent Interaction Flows", () => {
     );
 
     const decideRes = await decideEvent(decideReq, {
-      params: Promise.resolve({ id: agentEvent.id }),
+      params: Promise.resolve({ id: agentEvent!.id }),
     });
     expect(decideRes.status).toBe(200);
 
@@ -140,6 +117,92 @@ describe("End-to-End Agent Interaction Flows", () => {
     });
     expect(threads).toHaveLength(1);
     expect(threads[0].participants).toHaveLength(2);
+  });
+
+  it("agent event is created synchronously — visible before any Inngest processing", async () => {
+    const alice = await createTestUser({ displayName: "Alice Sync" });
+    const bob = await createTestUser({ displayName: "Bob Sync" });
+    const { apiKey: aliceKey } = await createTestAgent(alice.id, "Alice Bot");
+    const { apiKey: bobKey } = await createTestAgent(
+      bob.id,
+      "Bob Bot",
+    );
+
+    // Alice's agent sends a connection request
+    const res = await agentConnect(
+      new NextRequest("http://localhost/api/v1/agent/connect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${aliceKey}`,
+        },
+        body: JSON.stringify({
+          toUserId: bob.id,
+          intent: "Testing synchronous event visibility",
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const { requestId } = await res.json();
+
+    // Immediately poll Bob's agent events — the event should already exist
+    const pollRes = await getEvents(
+      new NextRequest("http://localhost/api/v1/agent/events", {
+        headers: { Authorization: `Bearer ${bobKey}` },
+      }),
+    );
+    const { events } = await pollRes.json();
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("CONNECTION_REQUEST");
+    expect(events[0].connectionRequest).toBeDefined();
+    expect(events[0].connectionRequest.id).toBe(requestId);
+    expect(events[0].connectionRequest.intent).toBe(
+      "Testing synchronous event visibility",
+    );
+
+    // The event payload should contain the sender's info
+    const payload = events[0].payload as Record<string, unknown>;
+    expect(payload.requestId).toBe(requestId);
+    expect(payload.intent).toBe("Testing synchronous event visibility");
+    const fromUser = payload.fromUser as Record<string, unknown>;
+    expect(fromUser.displayName).toBe("Alice Sync");
+  });
+
+  it("no agent event created when recipient has no active agent", async () => {
+    const alice = await createTestUser({ displayName: "Alice No Agent" });
+    const bob = await createTestUser({ displayName: "Bob No Agent" });
+    // Only Alice has an agent; Bob does NOT
+    const { apiKey: aliceKey } = await createTestAgent(alice.id, "Alice Bot");
+
+    const res = await agentConnect(
+      new NextRequest("http://localhost/api/v1/agent/connect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${aliceKey}`,
+        },
+        body: JSON.stringify({
+          toUserId: bob.id,
+          intent: "No agent on the other end",
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const { requestId } = await res.json();
+
+    // No agent event should exist
+    const events = await db.agentEvent.findMany({
+      where: { connectionRequestId: requestId },
+    });
+    expect(events).toHaveLength(0);
+
+    // But Bob should have a notification
+    const notif = await db.notification.findFirst({
+      where: { userId: bob.id, type: "CONNECTION_REQUEST" },
+    });
+    expect(notif).not.toBeNull();
+    expect(notif!.body).toContain("Connect an agent");
   });
 
   it("connection flow with ASK_MORE → follow-up reply → final accept", async () => {
@@ -167,30 +230,16 @@ describe("End-to-End Agent Interaction Flows", () => {
     );
     const { requestId } = await connectRes.json();
 
-    // Simulate event creation for Bob
-    const conversation = await db.agentConversation.create({
-      data: {
-        externalAgentId: bobAgent.id,
-        connectionRequestId: requestId,
-        status: "ACTIVE",
-      },
+    // Event created synchronously — find it
+    const event = await db.agentEvent.findFirst({
+      where: { connectionRequestId: requestId, externalAgentId: bobAgent.id },
     });
-
-    const event = await db.agentEvent.create({
-      data: {
-        externalAgentId: bobAgent.id,
-        type: "CONNECTION_REQUEST",
-        connectionRequestId: requestId,
-        conversationId: conversation.id,
-        payload: { requestId, intent: "Let's work together!" },
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
-    });
+    expect(event).not.toBeNull();
 
     // Bob's agent asks for more info
     const askRes = await decideEvent(
       new NextRequest(
-        `http://localhost/api/v1/agent/events/${event.id}/decide`,
+        `http://localhost/api/v1/agent/events/${event!.id}/decide`,
         {
           method: "POST",
           headers: {
@@ -203,7 +252,7 @@ describe("End-to-End Agent Interaction Flows", () => {
           }),
         },
       ),
-      { params: Promise.resolve({ id: event.id }) },
+      { params: Promise.resolve({ id: event!.id }) },
     );
     expect(askRes.status).toBe(200);
 
@@ -464,12 +513,6 @@ describe("End-to-End Agent Interaction Flows", () => {
     await createTestAgent(bob.id, "Bob Agent");
     await createTestAgent(carol.id, "Carol Agent");
 
-    // Alice's agent discovers users (without embedding search, just list all)
-    // Note: the discover endpoint uses pgvector which requires embeddings,
-    // but without the q parameter it falls back to listing users
-    // We can't test the full vector search without OpenAI, but we can verify
-    // the API works and returns users
-
     // Alice's agent sends connection request to Bob
     const connectRes = await agentConnect(
       new NextRequest("http://localhost/api/v1/agent/connect", {
@@ -493,5 +536,12 @@ describe("End-to-End Agent Interaction Flows", () => {
     });
     expect(connReq).not.toBeNull();
     expect(connReq!.category).toBe("COLLABORATION");
+
+    // Verify agent event was created synchronously for Bob's agent
+    const agentEvent = await db.agentEvent.findFirst({
+      where: { connectionRequestId: connReq!.id },
+    });
+    expect(agentEvent).not.toBeNull();
+    expect(agentEvent!.type).toBe("CONNECTION_REQUEST");
   });
 });

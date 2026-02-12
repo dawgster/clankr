@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +11,12 @@ import type {
   ConnectionRequest,
   User,
   Profile,
+  AgentEvent,
 } from "@/generated/prisma/client";
 
 type ReceivedRequest = ConnectionRequest & {
   fromUser: User & { profile: Profile | null };
+  events: Pick<AgentEvent, "id" | "status">[];
 };
 
 const statusColors: Record<string, string> = {
@@ -28,6 +31,7 @@ export function ReceivedRequests({
   requests,
 }: {
   requests: ReceivedRequest[];
+  hasActiveAgent?: boolean;
 }) {
   const router = useRouter();
 
@@ -53,10 +57,8 @@ export function ReceivedRequests({
     <div className="space-y-3">
       {requests.map((req) => {
         const profile = req.fromUser.profile;
-        const canOverride = ["PENDING", "IN_CONVERSATION", "ACCEPTED", "REJECTED"].includes(
-          req.status,
-        );
         const isDecided = req.status === "ACCEPTED" || req.status === "REJECTED";
+        const agentProcessing = req.events.length > 0;
 
         return (
           <Card key={req.id}>
@@ -84,7 +86,14 @@ export function ReceivedRequests({
                 </Badge>
               </div>
 
-              {canOverride && !isDecided && (
+              {agentProcessing && !isDecided && (
+                <AgentProcessingSection
+                  requestId={req.id}
+                  onOverride={handleOverride}
+                />
+              )}
+
+              {!agentProcessing && !isDecided && (
                 <div className="mt-4 flex gap-2">
                   <Button
                     size="sm"
@@ -123,6 +132,54 @@ export function ReceivedRequests({
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+function AgentProcessingSection({
+  requestId,
+  onOverride,
+}: {
+  requestId: string;
+  onOverride: (requestId: string, decision: "ACCEPTED" | "REJECTED") => void;
+}) {
+  const [showOverride, setShowOverride] = useState(false);
+
+  return (
+    <div className="mt-4">
+      <p className="text-sm text-muted-foreground">
+        Your agent is reviewing this request.
+      </p>
+      {!showOverride ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mt-2 text-xs"
+          onClick={() => setShowOverride(true)}
+        >
+          Override agent
+        </Button>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <Button size="sm" onClick={() => onOverride(requestId, "ACCEPTED")}>
+            Accept
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOverride(requestId, "REJECTED")}
+          >
+            Decline
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowOverride(false)}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

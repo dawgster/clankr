@@ -7,7 +7,7 @@ import { ReceivedRequests } from "@/components/connection/received-requests";
 export default async function RequestsPage() {
   const user = await requireUser();
 
-  const [sent, received] = await Promise.all([
+  const [sent, received, userAgent] = await Promise.all([
     db.connectionRequest.findMany({
       where: { fromUserId: user.id },
       include: {
@@ -19,8 +19,20 @@ export default async function RequestsPage() {
       where: { toUserId: user.id },
       include: {
         fromUser: { include: { profile: true } },
+        events: {
+          where: {
+            status: { in: ["PENDING", "DELIVERED"] },
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, status: true },
+          take: 1,
+        },
       },
       orderBy: { createdAt: "desc" },
+    }),
+    db.externalAgent.findFirst({
+      where: { userId: user.id, status: "ACTIVE" },
+      select: { id: true },
     }),
   ]);
 
@@ -42,7 +54,10 @@ export default async function RequestsPage() {
         </TabsList>
 
         <TabsContent value="received" className="mt-6">
-          <ReceivedRequests requests={received} />
+          <ReceivedRequests
+            requests={received}
+            hasActiveAgent={!!userAgent}
+          />
         </TabsContent>
 
         <TabsContent value="sent" className="mt-6">

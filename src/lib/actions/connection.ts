@@ -7,6 +7,7 @@ import {
   type ConnectionRequestInput,
 } from "@/lib/validators";
 import { inngest } from "@/inngest/client";
+import { ensureAgentEventForRequest } from "@/lib/connection-events";
 
 export async function sendConnectionRequest(input: ConnectionRequestInput) {
   const user = await requireUser();
@@ -47,13 +48,22 @@ export async function sendConnectionRequest(input: ConnectionRequestInput) {
     },
   });
 
-  // Fire Inngest event to evaluate connection
+  // Create agent event synchronously so the target user's agent can
+  // see the request immediately.
+  const result = await ensureAgentEventForRequest(request.id);
+
+  // Fire Inngest events as fallback + webhook dispatch.
   await inngest.send({
     name: "connection/request.created",
-    data: {
-      requestId: request.id,
-    },
+    data: { requestId: request.id },
   });
+
+  if (result.type === "event_created") {
+    await inngest.send({
+      name: "agent/event.created",
+      data: { eventId: result.eventId },
+    });
+  }
 
   return request;
 }
