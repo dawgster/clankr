@@ -121,7 +121,7 @@ export async function createTestAgentEvent(opts: {
       connectionRequestId: opts.connectionRequestId,
       negotiationId: opts.negotiationId,
       conversationId: conversation.id,
-      payload: opts.payload ?? { test: true },
+      payload: (opts.payload ?? { test: true }) as Record<string, string>,
       expiresAt: new Date(Date.now() + (opts.expiresInMs ?? 24 * 60 * 60 * 1000)),
     },
   });
