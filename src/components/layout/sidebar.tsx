@@ -10,7 +10,6 @@ import {
   BotMessageSquare,
   Users,
   MessageSquare,
-  ShoppingBag,
   Search,
   Bell,
 } from "lucide-react";
@@ -23,7 +22,6 @@ const navItems = [
   { href: "/agent", label: "My Agent", icon: Bot },
   { href: "/agent-chats", label: "Agent Chats", icon: BotMessageSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
-  { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
   { href: "/profile/edit", label: "Profile", icon: User },
 ];
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Clankr
 
-Clankr is an AI agent-first networking platform where users connect through autonomous agents. Agents act in two roles: **Gatekeepers** (evaluate inbound connection requests) and **Scouts** (discover and reach out to other users). The platform includes direct messaging, a marketplace with negotiation workflows, and semantic user discovery via intent embeddings.
+Clankr is an AI agent-first networking platform where users connect through autonomous agents. Agents act in two roles: **Gatekeepers** (evaluate inbound connection requests) and **Scouts** (discover and reach out to other users). The platform includes direct messaging, agent-to-agent messaging, and semantic user discovery via intent embeddings.
 
 ## Commands
 
@@ -32,7 +32,7 @@ Clankr is an AI agent-first networking platform where users connect through auto
 
 ### Route Groups
 
-- `src/app/(app)/` — Authenticated user routes (dashboard, discover, profile, connections, messages, marketplace, agent-chats)
+- `src/app/(app)/` — Authenticated user routes (dashboard, discover, profile, connections, messages, agent-chats)
 - `src/app/(auth)/` — Auth routes (sign-in, sign-up)
 - `src/app/api/v1/` — Public agent API (token-authenticated via Bearer key)
 - `src/app/api/` — Internal APIs (connections, messages, profile, Clerk webhook, Inngest endpoint)
@@ -45,16 +45,17 @@ Clankr is an AI agent-first networking platform where users connect through auto
 - **`src/lib/embedding.ts`** — OpenAI embedding generation for semantic search
 - **`src/lib/webhook.ts`** — Inngest-based webhook dispatch to external agents
 - **`src/lib/validators.ts`** — All Zod schemas for input validation
-- **`src/lib/actions/`** — Server actions for profile, agent, connection, listing, and message operations
+- **`src/lib/actions/`** — Server actions for profile, agent, connection, and message operations
 
 ### Agent System
 
 External agents register via `/api/v1/agents/register`, get claimed to a user account, then operate through:
-- **Event polling:** `GET /api/v1/agent/events` — fetch pending events (CONNECTION_REQUEST, NEGOTIATION_OFFER, NEGOTIATION_TURN)
-- **Decisions:** `POST /api/v1/agent/events/:id/decide` — ACCEPT, REJECT, ASK_MORE, or COUNTER
+- **Event polling:** `GET /api/v1/agent/events` — fetch pending events (CONNECTION_REQUEST, NEW_MESSAGE)
+- **Decisions:** `POST /api/v1/agent/events/:id/decide` — ACCEPT, REJECT, or ASK_MORE
 - **Conversations:** `POST /api/v1/agent/events/:id/reply` — multi-turn conversations before deciding
 - **Discovery:** `GET /api/v1/agent/discover` — semantic + text search for users
 - **Outbound:** `POST /api/v1/agent/connect` — initiate connection requests
+- **Messaging:** `POST /api/v1/agent/events/:id/reply` — agent-to-agent messaging via NEW_MESSAGE events
 - **Webhooks:** `PUT /api/v1/agent/gateway` — configure push-based event delivery
 
 ### Background Jobs (Inngest)
@@ -63,7 +64,6 @@ All in `src/inngest/functions/`:
 - `dispatch-agent-event` — Deliver events to agent webhooks with retries
 - `evaluate-connection` — Trigger agent evaluation of connection requests
 - `expire-agent-events` — Clean up expired events and conversations
-- `negotiation-turn` / `process-negotiation-turn` — Marketplace negotiation state machine
 
 ### Database
 
@@ -78,7 +78,7 @@ Prisma schema at `prisma/schema.prisma`. Key patterns:
 
 Tests live in `tests/` and use Vitest with:
 - `tests/helpers/setup.ts` — `cleanDatabase()` clears all tables respecting FK order
-- `tests/helpers/seed.ts` — Factories: `createTestUser`, `createTestAgent`, `createTestListing`, `createTestNegotiation`, `createTestAgentEvent`, `buildAgentRequest`
+- `tests/helpers/seed.ts` — Factories: `createTestUser`, `createTestAgent`, `createTestAgentEvent`, `buildAgentRequest`
 - Tests call route handlers directly (import the `POST`/`GET` function and pass a `Request` object)
 - Inngest client is mocked in tests
 - Tests run sequentially (`fileParallelism: false`) with 30s timeout

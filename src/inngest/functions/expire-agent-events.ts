@@ -13,7 +13,6 @@ export const expireAgentEvents = inngest.createFunction(
         include: {
           externalAgent: true,
           connectionRequest: true,
-          negotiation: { include: { listing: true } },
         },
       });
 
@@ -40,27 +39,6 @@ export const expireAgentEvents = inngest.createFunction(
             metadata: { eventId, requestId: agentEvent.connectionRequestId },
           },
         });
-      }
-
-      // Handle negotiation expiry
-      if (agentEvent.negotiation) {
-        await db.negotiation.update({
-          where: { id: agentEvent.negotiationId! },
-          data: { status: "EXPIRED" },
-        });
-
-        const neg = agentEvent.negotiation;
-        for (const userId of [neg.buyerId, neg.sellerId]) {
-          await db.notification.create({
-            data: {
-              userId,
-              type: "NEGOTIATION_UPDATE",
-              title: "Negotiation expired",
-              body: `The negotiation for "${neg.listing.title}" expired — agent did not respond in time.`,
-              metadata: { negotiationId: neg.id },
-            },
-          });
-        }
       }
     });
   },

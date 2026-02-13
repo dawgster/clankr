@@ -22,20 +22,6 @@ interface ConversationItem {
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
   } | null;
-  negotiation: {
-    id: string;
-    offerPrice: number;
-    status: string;
-    listing: { title: string };
-    buyer: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-    seller: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-  } | null;
   peerUser: {
     id: string;
     username: string;

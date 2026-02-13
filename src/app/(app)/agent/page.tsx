@@ -19,7 +19,7 @@ export default async function AgentPage() {
         <h1 className="text-2xl font-bold">My Agent</h1>
         <p className="text-muted-foreground">
           Connect and manage your external agent to handle connection requests
-          and negotiations.
+          and messages.
         </p>
       </div>
 

@@ -33,19 +33,6 @@ export const directMessageSchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
-export const listingSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().min(1).max(5000),
-  price: z.number().positive(),
-  images: z.array(z.string().url()).max(10).optional().default([]),
-  tags: z.array(z.string().max(50)).max(10).optional().default([]),
-});
-
-export const offerSchema = z.object({
-  offerPrice: z.number().positive(),
-  message: z.string().max(1000).optional().default(""),
-});
-
 // ── Agent BYOA schemas ──
 
 export const agentRegisterSchema = z.object({
@@ -63,10 +50,9 @@ export const agentGatewaySchema = z.object({
 });
 
 export const agentDecideSchema = z.object({
-  decision: z.enum(["ACCEPT", "REJECT", "ASK_MORE", "COUNTER"]),
+  decision: z.enum(["ACCEPT", "REJECT", "ASK_MORE"]),
   confidence: z.number().min(0).max(1).optional(),
   reason: z.string().max(2000).optional(),
-  counterPrice: z.number().positive().optional(),
 });
 
 export const agentReplySchema = z.object({
@@ -76,8 +62,6 @@ export const agentReplySchema = z.object({
 export type ProfileInput = z.infer<typeof profileSchema>;
 export type ConnectionRequestInput = z.infer<typeof connectionRequestSchema>;
 export type DirectMessageInput = z.infer<typeof directMessageSchema>;
-export type ListingInput = z.infer<typeof listingSchema>;
-export type OfferInput = z.infer<typeof offerSchema>;
 export type AgentRegisterInput = z.infer<typeof agentRegisterSchema>;
 export type AgentClaimInput = z.infer<typeof agentClaimSchema>;
 export type AgentGatewayInput = z.infer<typeof agentGatewaySchema>;

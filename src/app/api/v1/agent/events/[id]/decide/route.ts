@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentDecideSchema } from "@/lib/validators";
-import { inngest } from "@/inngest/client";
 
 export async function POST(
   req: NextRequest,
@@ -16,7 +15,6 @@ export async function POST(
       where: { id: eventId },
       include: {
         connectionRequest: true,
-        negotiation: { include: { listing: true } },
         conversation: true,
       },
     });
@@ -55,17 +53,6 @@ export async function POST(
       event.connectionRequest
     ) {
       await processConnectionDecision(event.connectionRequestId!, decisionData, agent.id);
-    } else if (
-      (event.type === "NEGOTIATION_OFFER" ||
-        event.type === "NEGOTIATION_TURN") &&
-      event.negotiation
-    ) {
-      await processNegotiationDecision(
-        event.negotiationId!,
-        decisionData,
-        agent.id,
-        event.negotiation.listing,
-      );
     }
     // NEW_MESSAGE: ACCEPT = acknowledge, no further processing needed
 
@@ -187,72 +174,6 @@ async function processConnectionDecision(
           decision.reason ||
           "The agent has some questions before making a decision.",
         metadata: { requestId },
-      },
-    });
-  }
-}
-
-async function processNegotiationDecision(
-  negotiationId: string,
-  decision: {
-    decision: string;
-    confidence?: number;
-    reason?: string;
-    counterPrice?: number;
-  },
-  _agentId: string,
-  listing: { id: string; title: string; price: number },
-) {
-  const negotiation = await db.negotiation.findUnique({
-    where: { id: negotiationId },
-    include: { buyer: true, seller: true },
-  });
-  if (!negotiation) return;
-
-  if (decision.decision === "ACCEPT") {
-    await db.negotiation.update({
-      where: { id: negotiationId },
-      data: { status: "ACCEPTED" },
-    });
-    await db.listing.update({
-      where: { id: listing.id },
-      data: { status: "SOLD" },
-    });
-    for (const userId of [negotiation.buyerId, negotiation.sellerId]) {
-      await db.notification.create({
-        data: {
-          userId,
-          type: "NEGOTIATION_UPDATE",
-          title: "Negotiation accepted",
-          body: `The negotiation for "${listing.title}" has been accepted.`,
-          metadata: { negotiationId },
-        },
-      });
-    }
-  } else if (decision.decision === "REJECT") {
-    await db.negotiation.update({
-      where: { id: negotiationId },
-      data: { status: "REJECTED" },
-    });
-    for (const userId of [negotiation.buyerId, negotiation.sellerId]) {
-      await db.notification.create({
-        data: {
-          userId,
-          type: "NEGOTIATION_UPDATE",
-          title: "Negotiation rejected",
-          body: `The negotiation for "${listing.title}" has been rejected.`,
-          metadata: { negotiationId },
-        },
-      });
-    }
-  } else if (decision.decision === "COUNTER" && decision.counterPrice) {
-    // Fire event for the counterparty's agent
-    await inngest.send({
-      name: "agent/negotiation.turn",
-      data: {
-        negotiationId,
-        counterPrice: decision.counterPrice,
-        reason: decision.reason,
       },
     });
   }

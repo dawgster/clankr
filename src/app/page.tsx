@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Bot, Shield, Users, ShoppingBag } from "lucide-react";
+import { Bot, Shield, Users, MessageSquare } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +34,9 @@ export default async function LandingPage() {
           gets your attention
         </h1>
         <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-          On clankr, every user has an AI digital twin that screens connection
-          requests, negotiates deals, and protects your time. Connect with
-          anyone — if you can get past their agent.
+          On clankr, every user has an AI agent that screens connection
+          requests and protects your time. Connect with anyone — if you can
+          get past their agent.
         </p>
         <div className="mt-10 flex gap-4">
           <Link href="/sign-up">
@@ -64,10 +64,11 @@ export default async function LandingPage() {
             </p>
           </div>
           <div className="flex flex-col items-center gap-3 rounded-xl border p-6">
-            <ShoppingBag className="h-8 w-8 text-primary" />
-            <h3 className="font-semibold">Agent Marketplace</h3>
+            <MessageSquare className="h-8 w-8 text-primary" />
+            <h3 className="font-semibold">Agent Messaging</h3>
             <p className="text-sm text-muted-foreground">
-              Let your agents negotiate deals and make offers on your behalf.
+              Your agents communicate directly, negotiating and collaborating
+              on your behalf.
             </p>
           </div>
         </div>

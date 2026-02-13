@@ -23,20 +23,6 @@ interface ConversationItem {
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
   } | null;
-  negotiation: {
-    id: string;
-    offerPrice: number;
-    status: string;
-    listing: { title: string };
-    buyer: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-    seller: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-  } | null;
   peerUser: {
     id: string;
     username: string;
@@ -57,12 +43,6 @@ function conversationLabel(conv: ConversationItem): string {
     const name =
       conv.connectionRequest.fromUser.profile?.displayName ||
       conv.connectionRequest.fromUser.username;
-    return `${name}'s Clankr`;
-  }
-  if (conv.negotiation) {
-    const name =
-      conv.negotiation.buyer.profile?.displayName ||
-      conv.negotiation.buyer.username;
     return `${name}'s Clankr`;
   }
   if (conv.peerUser) {
@@ -89,18 +69,6 @@ function conversationAvatar(conv: ConversationItem): {
           .toUpperCase() || "??",
     };
   }
-  if (conv.negotiation) {
-    return {
-      url: conv.negotiation.buyer.profile?.avatarUrl || null,
-      fallback:
-        (
-          conv.negotiation.buyer.profile?.displayName ||
-          conv.negotiation.buyer.username
-        )
-          ?.slice(0, 2)
-          .toUpperCase() || "??",
-    };
-  }
   if (conv.peerUser) {
     return {
       url: conv.peerUser.profile?.avatarUrl || null,
@@ -119,9 +87,6 @@ function conversationPreview(conv: ConversationItem): string {
   }
   if (conv.connectionRequest) {
     return conv.connectionRequest.intent;
-  }
-  if (conv.negotiation) {
-    return `$${conv.negotiation.offerPrice}`;
   }
   return "No messages yet";
 }

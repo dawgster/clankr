@@ -14,8 +14,6 @@ export async function cleanDatabase() {
   await db.messageThread.deleteMany();
   await db.connection.deleteMany();
   await db.connectionRequest.deleteMany();
-  await db.negotiation.deleteMany();
-  await db.listing.deleteMany();
   await db.externalAgent.deleteMany();
   await db.profile.deleteMany();
   await db.user.deleteMany();

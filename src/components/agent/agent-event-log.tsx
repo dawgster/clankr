@@ -21,12 +21,6 @@ type AgentEventItem = {
       profile: { displayName: string } | null;
     };
   } | null;
-  negotiation: {
-    id: string;
-    offerPrice: number;
-    status: string;
-    listing: { title: string };
-  } | null;
 };
 
 const statusColors: Record<string, string> = {
@@ -43,9 +37,6 @@ function eventDescription(event: AgentEventItem): string {
       event.connectionRequest.fromUser.username;
     return `Connection request from ${name}: "${event.connectionRequest.intent}"`;
   }
-  if (event.negotiation) {
-    return `${event.type === "NEGOTIATION_OFFER" ? "Offer" : "Counter"}: $${event.negotiation.offerPrice} for "${event.negotiation.listing.title}"`;
-  }
   return event.type.replace(/_/g, " ");
 }
 
@@ -55,7 +46,7 @@ export function AgentEventLog({ events }: { events: AgentEventItem[] }) {
       <Card>
         <CardContent className="py-12 text-center text-muted-foreground">
           No agent events yet. Events will appear here when your agent receives
-          connection requests or negotiation offers.
+          connection requests.
         </CardContent>
       </Card>
     );

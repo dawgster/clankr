@@ -33,20 +33,6 @@ interface ConversationDetail {
       profile: { displayName: string | null; avatarUrl: string | null } | null;
     };
   } | null;
-  negotiation: {
-    id: string;
-    offerPrice: number;
-    status: string;
-    listing: { title: string };
-    buyer: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-    seller: {
-      username: string;
-      profile: { displayName: string | null; avatarUrl: string | null } | null;
-    };
-  } | null;
   peerUser: {
     id: string;
     username: string;
@@ -78,12 +64,6 @@ function conversationTitle(conv: ConversationDetail): string {
     const name =
       conv.connectionRequest.fromUser.profile?.displayName ||
       conv.connectionRequest.fromUser.username;
-    return `${name}'s Clankr`;
-  }
-  if (conv.negotiation) {
-    const name =
-      conv.negotiation.buyer.profile?.displayName ||
-      conv.negotiation.buyer.username;
     return `${name}'s Clankr`;
   }
   if (conv.peerUser) {
@@ -133,11 +113,6 @@ export function AgentConversationThread({
             {conversation.connectionRequest && (
               <span className="text-xs text-muted-foreground">
                 {conversation.connectionRequest.category}
-              </span>
-            )}
-            {conversation.negotiation && (
-              <span className="text-xs text-muted-foreground">
-                ${conversation.negotiation.offerPrice}
               </span>
             )}
           </div>

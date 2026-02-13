@@ -9,7 +9,6 @@ import {
   Users,
   Bot,
   MessageSquare,
-  ShoppingBag,
   Bell,
   ArrowRight,
 } from "lucide-react";
@@ -24,7 +23,6 @@ export default async function DashboardPage() {
     unreadNotifications,
     recentNotifications,
     agentConversations,
-    activeListings,
   ] = await Promise.all([
     db.connection.count({
       where: { OR: [{ userAId: user.id }, { userBId: user.id }] },
@@ -49,9 +47,6 @@ export default async function DashboardPage() {
         status: { in: ["PENDING", "DELIVERED"] },
       },
     }),
-    db.listing.count({
-      where: { sellerId: user.id, status: "ACTIVE" },
-    }),
   ]);
 
   const stats = [
@@ -73,12 +68,6 @@ export default async function DashboardPage() {
       icon: Bot,
       href: "/agent",
     },
-    {
-      label: "Active Listings",
-      value: activeListings,
-      icon: ShoppingBag,
-      href: "/marketplace",
-    },
   ];
 
   return (
@@ -93,7 +82,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <Link key={stat.label} href={stat.href}>
             <Card className="transition-colors hover:bg-accent/50">
@@ -112,7 +101,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Link href="/discover">
           <Button variant="outline" className="w-full justify-between">
             Discover People
@@ -122,12 +111,6 @@ export default async function DashboardPage() {
         <Link href="/agent">
           <Button variant="outline" className="w-full justify-between">
             Manage Agent
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-        <Link href="/marketplace/new">
-          <Button variant="outline" className="w-full justify-between">
-            Create Listing
             <ArrowRight className="h-4 w-4" />
           </Button>
         </Link>

@@ -58,50 +58,12 @@ export async function createTestAgent(userId: string, name?: string) {
 }
 
 /**
- * Create a listing owned by a seller user.
- */
-export async function createTestListing(sellerId: string, overrides: {
-  title?: string;
-  description?: string;
-  price?: number;
-} = {}) {
-  return db.listing.create({
-    data: {
-      sellerId,
-      title: overrides.title ?? "Test Listing",
-      description: overrides.description ?? "A test listing for integration tests",
-      price: overrides.price ?? 100,
-    },
-  });
-}
-
-/**
- * Create a negotiation between buyer and seller on a listing.
- */
-export async function createTestNegotiation(
-  listingId: string,
-  buyerId: string,
-  sellerId: string,
-  offerPrice: number = 80,
-) {
-  return db.negotiation.create({
-    data: {
-      listingId,
-      buyerId,
-      sellerId,
-      offerPrice,
-    },
-  });
-}
-
-/**
  * Create an agent event (e.g. CONNECTION_REQUEST) ready for an agent to poll.
  */
 export async function createTestAgentEvent(opts: {
   agentId: string;
-  type: "CONNECTION_REQUEST" | "NEGOTIATION_OFFER" | "NEGOTIATION_TURN";
+  type: "CONNECTION_REQUEST" | "NEW_MESSAGE";
   connectionRequestId?: string;
-  negotiationId?: string;
   payload?: Record<string, unknown>;
   expiresInMs?: number;
 }) {
@@ -109,7 +71,6 @@ export async function createTestAgentEvent(opts: {
     data: {
       externalAgentId: opts.agentId,
       connectionRequestId: opts.connectionRequestId,
-      negotiationId: opts.negotiationId,
       status: "ACTIVE",
     },
   });
@@ -119,7 +80,6 @@ export async function createTestAgentEvent(opts: {
       externalAgentId: opts.agentId,
       type: opts.type,
       connectionRequestId: opts.connectionRequestId,
-      negotiationId: opts.negotiationId,
       conversationId: conversation.id,
       payload: (opts.payload ?? { test: true }) as Record<string, string>,
       expiresAt: new Date(Date.now() + (opts.expiresInMs ?? 24 * 60 * 60 * 1000)),

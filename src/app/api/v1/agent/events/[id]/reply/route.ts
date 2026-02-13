@@ -18,7 +18,6 @@ export async function POST(
       include: {
         conversation: true,
         connectionRequest: { select: { fromUserId: true, toUserId: true } },
-        negotiation: { select: { buyerId: true, sellerId: true } },
       },
     });
 
@@ -83,14 +82,13 @@ export async function POST(
       return NextResponse.json({ ok: true, conversationId });
     }
 
-    // Default: multi-turn conversation reply (CONNECTION_REQUEST, NEGOTIATION, etc.)
+    // Default: multi-turn conversation reply (CONNECTION_REQUEST, etc.)
     let conversationId = event.conversationId;
     if (!conversationId) {
       const conversation = await db.agentConversation.create({
         data: {
           externalAgentId: agent.id,
           connectionRequestId: event.connectionRequestId,
-          negotiationId: event.negotiationId,
           status: "ACTIVE",
         },
       });
@@ -121,11 +119,6 @@ export async function POST(
           event.connectionRequest.toUserId === agent.userId
             ? event.connectionRequest.fromUserId
             : event.connectionRequest.toUserId;
-      } else if (event.negotiation) {
-        peerUserId =
-          event.negotiation.sellerId === agent.userId
-            ? event.negotiation.buyerId
-            : event.negotiation.sellerId;
       }
 
       if (peerUserId) {

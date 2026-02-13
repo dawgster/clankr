@@ -115,26 +115,6 @@ export async function getAgentConversations() {
           },
         },
       },
-      negotiation: {
-        select: {
-          id: true,
-          offerPrice: true,
-          status: true,
-          listing: { select: { title: true } },
-          buyer: {
-            select: {
-              username: true,
-              profile: { select: { displayName: true, avatarUrl: true } },
-            },
-          },
-          seller: {
-            select: {
-              username: true,
-              profile: { select: { displayName: true, avatarUrl: true } },
-            },
-          },
-        },
-      },
       messages: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -194,26 +174,6 @@ export async function getAgentConversation(conversationId: string) {
           },
         },
       },
-      negotiation: {
-        select: {
-          id: true,
-          offerPrice: true,
-          status: true,
-          listing: { select: { title: true } },
-          buyer: {
-            select: {
-              username: true,
-              profile: { select: { displayName: true, avatarUrl: true } },
-            },
-          },
-          seller: {
-            select: {
-              username: true,
-              profile: { select: { displayName: true, avatarUrl: true } },
-            },
-          },
-        },
-      },
       messages: {
         orderBy: { createdAt: "asc" },
       },
@@ -263,14 +223,6 @@ export async function getAgentEvents() {
               profile: { select: { displayName: true } },
             },
           },
-        },
-      },
-      negotiation: {
-        select: {
-          id: true,
-          offerPrice: true,
-          status: true,
-          listing: { select: { title: true } },
         },
       },
     },

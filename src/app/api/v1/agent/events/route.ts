@@ -34,14 +34,6 @@ export async function GET(req: NextRequest) {
             },
           },
         },
-        negotiation: {
-          select: {
-            id: true,
-            offerPrice: true,
-            status: true,
-            listing: { select: { title: true, price: true } },
-          },
-        },
       },
     });
 
