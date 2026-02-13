@@ -49,8 +49,11 @@ model Profile {
   links       Json     @default("[]")
   intent          String?
   intentEmbedding Unsupported("vector(1536)")?
+  nearAccountId   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  paymentPolicy PaymentPolicy?
 }
 
 // ──────────────────────────────────────────────
@@ -188,12 +191,14 @@ model ConnectionRequest {
   toUser     User            @relation("RequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
   category   RequestCategory @default(OTHER)
   intent     String
+  stakeNear  Float?
   status     RequestStatus   @default(PENDING)
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
   conversations AgentConversation[]
   events        AgentEvent[]
+  payment       PaymentTransaction?
 
   @@unique([fromUserId, toUserId])
 }
@@ -253,6 +258,8 @@ enum NotificationType {
   CONNECTION_REJECTED
   AGENT_DECISION
   NEW_MESSAGE
+  PAYMENT_SETTLED
+  PAYMENT_REFUNDED
 }
 
 model Notification {
@@ -265,4 +272,43 @@ model Notification {
   read      Boolean          @default(false)
   metadata  Json?
   createdAt DateTime         @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Payment Policy & Transactions
+// ──────────────────────────────────────────────
+
+model PaymentPolicy {
+  id                   String  @id @default(cuid())
+  profileId            String  @unique
+  profile              Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  requireStake         Boolean @default(false)
+  minStakeNear         Float   @default(0)
+  maxStakeNear         Float   @default(10)
+  dailyMaxNear         Float   @default(50)
+  requireApprovalAbove Float?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+enum PaymentStatus {
+  PENDING
+  SETTLED
+  REFUNDED
+  FAILED
+}
+
+model PaymentTransaction {
+  id                  String        @id @default(cuid())
+  connectionRequestId String        @unique
+  connectionRequest   ConnectionRequest @relation(fields: [connectionRequestId], references: [id], onDelete: Cascade)
+  fromNearAccount     String
+  toNearAccount       String
+  amountNear          Float
+  status              PaymentStatus @default(PENDING)
+  nearTxHash          String?
+  settledAt           DateTime?
+  refundedAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 }

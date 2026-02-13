@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
-import { connectionRequestSchema } from "@/lib/validators";
+import { agentConnectSchema } from "@/lib/validators";
 import { inngest } from "@/inngest/client";
 import { ensureAgentEventForRequest } from "@/lib/connection-events";
+import {
+  validateStakeAgainstPolicy,
+  createStakeTransaction,
+} from "@/lib/payment";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const data = connectionRequestSchema.parse(body);
+    const data = agentConnectSchema.parse(body);
 
     // No self-connect
     if (data.toUserId === agent.userId) {
@@ -70,14 +74,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate stake against target user's payment policy
+    const policyError = await validateStakeAgainstPolicy(
+      data.toUserId,
+      data.stakeNear,
+    );
+    if (policyError) {
+      return NextResponse.json({ error: policyError }, { status: 422 });
+    }
+
     const request = await db.connectionRequest.create({
       data: {
         fromUserId: agent.userId,
         toUserId: data.toUserId,
         category: data.category,
         intent: data.intent,
+        stakeNear: data.stakeNear ?? null,
       },
     });
+
+    // Create payment transaction if a stake was provided
+    if (data.stakeNear && data.stakeNear > 0) {
+      const senderProfile = await db.profile.findUnique({
+        where: { userId: agent.userId },
+        select: { nearAccountId: true },
+      });
+      const recipientProfile = await db.profile.findUnique({
+        where: { userId: data.toUserId },
+        select: { nearAccountId: true },
+      });
+
+      if (senderProfile?.nearAccountId && recipientProfile?.nearAccountId) {
+        await createStakeTransaction(
+          request.id,
+          senderProfile.nearAccountId,
+          recipientProfile.nearAccountId,
+          data.stakeNear,
+        );
+      }
+    }
 
     // Create agent event synchronously so the target user's agent can
     // see the request immediately (instead of waiting for Inngest).
@@ -98,7 +133,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ ok: true, requestId: request.id });
+    return NextResponse.json({
+      ok: true,
+      requestId: request.id,
+      stakeNear: data.stakeNear ?? null,
+    });
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json(

@@ -98,6 +98,7 @@ export async function ensureAgentEventForRequest(
         },
         category: request.category,
         intent: request.intent,
+        stakeNear: request.stakeNear,
       },
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     },

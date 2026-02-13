@@ -1,5 +1,6 @@
 import { inngest } from "../client";
 import { db } from "@/lib/db";
+import { refundPayment } from "@/lib/payment";
 
 export const expireAgentEvents = inngest.createFunction(
   { id: "expire-agent-events" },
@@ -30,6 +31,11 @@ export const expireAgentEvents = inngest.createFunction(
 
       // Handle connection request expiry
       if (agentEvent.connectionRequest && agentEvent.externalAgent.userId) {
+        // Refund any staked payment
+        if (agentEvent.connectionRequestId) {
+          await refundPayment(agentEvent.connectionRequestId);
+        }
+
         await db.notification.create({
           data: {
             userId: agentEvent.externalAgent.userId,

@@ -57,9 +57,16 @@ export function SentRequests({
                     <p className="font-medium">
                       {profile?.displayName || req.toUser.username}
                     </p>
-                    <Badge variant="outline" className="mt-1">
-                      {req.category}
-                    </Badge>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Badge variant="outline">
+                        {req.category}
+                      </Badge>
+                      {req.stakeNear != null && req.stakeNear > 0 && (
+                        <Badge variant="secondary">
+                          {req.stakeNear} NEAR staked
+                        </Badge>
+                      )}
+                    </div>
                     <p className="mt-2 text-sm">{req.intent}</p>
                   </div>
                 </div>

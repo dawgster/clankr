@@ -8,6 +8,7 @@ import {
 } from "@/lib/validators";
 import { inngest } from "@/inngest/client";
 import { ensureAgentEventForRequest } from "@/lib/connection-events";
+import { settlePayment, refundPayment } from "@/lib/payment";
 
 export async function sendConnectionRequest(input: ConnectionRequestInput) {
   const user = await requireUser();
@@ -139,6 +140,9 @@ export async function overrideAgentDecision(
       ],
     });
 
+    // Settle payment if a stake was placed
+    await settlePayment(requestId);
+
     // Notify requester
     await db.notification.create({
       data: {
@@ -150,6 +154,9 @@ export async function overrideAgentDecision(
       },
     });
   } else {
+    // Refund payment if a stake was placed
+    await refundPayment(requestId);
+
     await db.notification.create({
       data: {
         userId: request.fromUserId,

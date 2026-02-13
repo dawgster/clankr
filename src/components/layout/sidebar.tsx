@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Search,
   Bell,
+  Wallet,
 } from "lucide-react";
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/agent", label: "My Agent", icon: Bot },
   { href: "/agent-chats", label: "Agent Chats", icon: BotMessageSquare },
   { href: "/messages", label: "Messages", icon: MessageSquare },
+  { href: "/payments", label: "Payments", icon: Wallet },
   { href: "/profile/edit", label: "Profile", icon: User },
 ];
 

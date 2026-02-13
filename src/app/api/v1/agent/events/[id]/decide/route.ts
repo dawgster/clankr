@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentDecideSchema } from "@/lib/validators";
+import { settlePayment, refundPayment } from "@/lib/payment";
 
 export async function POST(
   req: NextRequest,
@@ -100,6 +101,10 @@ async function processConnectionDecision(
         { threadId: thread.id, userId: request.toUserId },
       ],
     });
+
+    // Settle payment if a stake was placed
+    await settlePayment(requestId);
+
     await db.notification.create({
       data: {
         userId: request.fromUserId,
@@ -123,6 +128,10 @@ async function processConnectionDecision(
       where: { id: requestId },
       data: { status: "REJECTED" },
     });
+
+    // Refund payment if a stake was placed
+    await refundPayment(requestId);
+
     await db.notification.create({
       data: {
         userId: request.fromUserId,

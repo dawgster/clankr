@@ -16,7 +16,7 @@ export default async function ProfilePage({
   const profileUser = await db.user.findUnique({
     where: { username },
     include: {
-      profile: true,
+      profile: { include: { paymentPolicy: true } },
       externalAgent: { select: { status: true, name: true } },
       _count: {
         select: {
@@ -137,6 +137,21 @@ export default async function ProfilePage({
               <p className="text-sm text-muted-foreground">
                 {profileUser.externalAgent.name} — connected
               </p>
+            </div>
+          )}
+
+          {profile.nearAccountId && (
+            <div className="rounded-lg border bg-muted/50 p-4">
+              <h3 className="mb-2 text-sm font-medium">NEAR Wallet</h3>
+              <p className="font-mono text-sm text-muted-foreground">
+                {profile.nearAccountId}
+              </p>
+              {profile.paymentPolicy?.requireStake && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Requires {profile.paymentPolicy.minStakeNear} NEAR minimum
+                  stake for connection requests
+                </p>
+              )}
             </div>
           )}
         </CardContent>

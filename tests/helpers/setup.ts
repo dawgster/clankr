@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
  */
 export async function cleanDatabase() {
   await db.notification.deleteMany();
+  await db.paymentTransaction.deleteMany();
   await db.agentMessage.deleteMany();
   await db.agentEvent.deleteMany();
   await db.agentConversation.deleteMany();
@@ -15,6 +16,7 @@ export async function cleanDatabase() {
   await db.connection.deleteMany();
   await db.connectionRequest.deleteMany();
   await db.externalAgent.deleteMany();
+  await db.paymentPolicy.deleteMany();
   await db.profile.deleteMany();
   await db.user.deleteMany();
 }
