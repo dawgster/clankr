@@ -11,7 +11,7 @@ export async function getNearBalance(accountId: string): Promise<{
   });
 
   const state = await provider.viewAccount({ accountId });
-  const balanceYocto = state.balance.available.toString();
+  const balanceYocto = (state.amount - state.locked).toString();
 
   return {
     accountId,
