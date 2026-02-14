@@ -8,8 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Unplug, Wifi } from "lucide-react";
-import { claimAgent, updateGateway, disconnectAgent } from "@/lib/actions/agent";
+import { Bot, Unplug, Wallet, MessageSquare, Wifi } from "lucide-react";
+import {
+  claimAgent,
+  updateGateway,
+  disconnectAgent,
+  provisionAgentAccounts,
+} from "@/lib/actions/agent";
 
 type AgentInfo = {
   id: string;
@@ -20,6 +25,8 @@ type AgentInfo = {
   webhookEnabled: boolean;
   lastSeenAt: Date | null;
   createdAt: Date;
+  nearAccountId: string | null;
+  matrixUserId: string | null;
 } | null;
 
 export function ConnectAgent({ agent }: { agent: AgentInfo }) {
@@ -153,6 +160,8 @@ export function ConnectAgent({ agent }: { agent: AgentInfo }) {
         </CardContent>
       </Card>
 
+      <AgentAccountsCard agent={agent} />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -209,5 +218,104 @@ export function ConnectAgent({ agent }: { agent: AgentInfo }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function AgentAccountsCard({ agent }: { agent: NonNullable<AgentInfo> }) {
+  const router = useRouter();
+  const [provisioningNear, setProvisioningNear] = useState(false);
+  const [provisioningMatrix, setProvisioningMatrix] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleProvisionNear() {
+    setProvisioningNear(true);
+    setError("");
+    try {
+      await provisionAgentAccounts({ near: true });
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to create NEAR wallet",
+      );
+    } finally {
+      setProvisioningNear(false);
+    }
+  }
+
+  async function handleProvisionMatrix() {
+    setProvisioningMatrix(true);
+    setError("");
+    try {
+      await provisionAgentAccounts({ matrix: true });
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to create Matrix account",
+      );
+    } finally {
+      setProvisioningMatrix(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Wallet className="h-4 w-4" />
+          Agent Accounts
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">NEAR Wallet:</span>
+            {agent.nearAccountId ? (
+              <span className="font-mono text-xs">{agent.nearAccountId}</span>
+            ) : (
+              <span className="text-muted-foreground italic">
+                Not provisioned
+              </span>
+            )}
+          </div>
+          {!agent.nearAccountId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleProvisionNear}
+              disabled={provisioningNear}
+            >
+              {provisioningNear ? "Creating..." : "Create NEAR Wallet"}
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Matrix Account:</span>
+            {agent.matrixUserId ? (
+              <span className="font-mono text-xs">{agent.matrixUserId}</span>
+            ) : (
+              <span className="text-muted-foreground italic">
+                Not provisioned
+              </span>
+            )}
+          </div>
+          {!agent.matrixUserId && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleProvisionMatrix}
+              disabled={provisioningMatrix}
+            >
+              {provisioningMatrix ? "Creating..." : "Create Matrix Account"}
+            </Button>
+          )}
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
   );
 }

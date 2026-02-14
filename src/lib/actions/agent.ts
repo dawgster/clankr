@@ -7,6 +7,7 @@ import {
   type AgentGatewayInput,
 } from "@/lib/validators";
 import { provisionAgentMatrixAccount } from "@/lib/matrix/provisioning";
+import { createNearSubAccount } from "@/lib/near/account";
 
 export async function getMyAgent() {
   const user = await requireUser();
@@ -21,6 +22,8 @@ export async function getMyAgent() {
       webhookEnabled: true,
       lastSeenAt: true,
       createdAt: true,
+      nearAccountId: true,
+      matrixUserId: true,
     },
   });
 }
@@ -208,6 +211,41 @@ export async function getAgentConversation(conversationId: string) {
     : null;
 
   return { ...conversation, peerUser };
+}
+
+export async function provisionAgentAccounts(opts: {
+  near?: boolean;
+  matrix?: boolean;
+}) {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+
+  let nearProvisioned = !!agent.nearAccountId;
+  let matrixProvisioned = !!agent.matrixUserId;
+
+  if (opts.near && !agent.nearAccountId) {
+    const result = await createNearSubAccount(agent.id);
+    await db.externalAgent.update({
+      where: { id: agent.id },
+      data: {
+        nearAccountId: result.accountId,
+        nearPublicKey: result.publicKey,
+        nearEncryptedPrivateKey: result.encryptedPrivateKey,
+      },
+    });
+    nearProvisioned = true;
+  }
+
+  if (opts.matrix && !agent.matrixAccessToken) {
+    await provisionAgentMatrixAccount(agent);
+    matrixProvisioned = true;
+  }
+
+  return { nearProvisioned, matrixProvisioned };
 }
 
 export async function getAgentEvents() {
