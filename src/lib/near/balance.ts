@@ -11,11 +11,11 @@ export async function getNearBalance(accountId: string): Promise<{
   });
 
   const state = await provider.viewAccount({ accountId });
-  const balanceYocto = (state.amount - state.locked).toString();
+  const available = state.amount - state.locked;
 
   return {
     accountId,
-    balanceYocto,
-    balanceNear: yoctoToNear(balanceYocto),
+    balanceYocto: available.toString(),
+    balanceNear: yoctoToNear(available),
   };
 }

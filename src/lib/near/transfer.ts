@@ -26,7 +26,7 @@ export async function transferNear(opts: {
     privateKey as KeyPairString,
   );
 
-  const amountYocto = nearToYocto(opts.amount);
+  const amountYocto = nearToYocto(Number(opts.amount));
   const result = await account.transfer({
     receiverId: opts.receiverAccountId,
     amount: amountYocto,
