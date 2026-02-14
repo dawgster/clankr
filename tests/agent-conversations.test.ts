@@ -13,6 +13,12 @@ vi.mock("@/inngest/client", () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
+vi.mock("@/lib/agent-chat", () => ({
+  sendAgentChatMessage: vi.fn(),
+}));
+
+import { inngest } from "@/inngest/client";
+import { sendAgentChatMessage } from "@/lib/agent-chat";
 import { POST as replyToEvent } from "@/app/api/v1/agent/events/[id]/reply/route";
 
 describe("Agent Conversations & Replies", () => {
@@ -241,5 +247,124 @@ describe("Agent Conversations & Replies", () => {
       params: Promise.resolve({ id: event.id }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("should return 400 for NEW_MESSAGE events when agent is unclaimed", async () => {
+    const sender = await createTestUser({ displayName: "Sender User" });
+    const { key, hash, prefix } = await import("@/lib/agent-auth").then((m) =>
+      m.generateApiKey(),
+    );
+
+    const agent = await db.externalAgent.create({
+      data: {
+        name: "Unclaimed Reply Agent",
+        apiKeyHash: hash,
+        apiKeyPrefix: prefix,
+        status: "ACTIVE",
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "NEW_MESSAGE",
+      payload: { senderUserId: sender.id, chatThreadId: "thread-1" },
+    });
+
+    const res = await replyToEvent(
+      new NextRequest(`http://localhost/api/v1/agent/events/${event.id}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ content: "Should fail because unclaimed" }),
+      }),
+      { params: Promise.resolve({ id: event.id }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Agent not claimed");
+    expect(vi.mocked(sendAgentChatMessage)).not.toHaveBeenCalled();
+  });
+
+  it("should return 400 for NEW_MESSAGE events with invalid payload", async () => {
+    const owner = await createTestUser({ displayName: "Payload Owner" });
+    const { agent, apiKey } = await createTestAgent(owner.id, "Payload Agent");
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "NEW_MESSAGE",
+      payload: { chatThreadId: "thread-without-sender" },
+    });
+
+    const res = await replyToEvent(
+      new NextRequest(`http://localhost/api/v1/agent/events/${event.id}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ content: "Missing sender in payload" }),
+      }),
+      { params: Promise.resolve({ id: event.id }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Invalid event payload");
+    expect(vi.mocked(sendAgentChatMessage)).not.toHaveBeenCalled();
+  });
+
+  it("should process NEW_MESSAGE reply, mark event DECIDED, and dispatch follow-up event", async () => {
+    const sender = await createTestUser({ displayName: "Origin User" });
+    const recipient = await createTestUser({ displayName: "Reply Owner" });
+    const { agent, apiKey } = await createTestAgent(recipient.id, "Reply Agent");
+
+    const { event, conversation } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "NEW_MESSAGE",
+      payload: { senderUserId: sender.id, chatThreadId: "thread-abc" },
+    });
+
+    vi.mocked(sendAgentChatMessage).mockResolvedValue({
+      eventId: "evt-follow-up",
+      chatThreadId: "thread-abc",
+    });
+
+    const res = await replyToEvent(
+      new NextRequest(`http://localhost/api/v1/agent/events/${event.id}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ content: "Thanks, tell me more." }),
+      }),
+      { params: Promise.resolve({ id: event.id }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, conversationId: conversation.id });
+
+    const updatedEvent = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updatedEvent!.status).toBe("DECIDED");
+    expect(updatedEvent!.decision).toEqual({ action: "REPLY" });
+
+    const messages = await db.agentMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe("AGENT");
+    expect(messages[0].content).toBe("Thanks, tell me more.");
+
+    expect(vi.mocked(sendAgentChatMessage)).toHaveBeenCalledWith(
+      { id: agent.id, userId: recipient.id },
+      sender.id,
+      "Thanks, tell me more.",
+    );
+    expect(vi.mocked(inngest.send)).toHaveBeenCalledWith({
+      name: "agent/event.created",
+      data: { eventId: "evt-follow-up" },
+    });
   });
 });

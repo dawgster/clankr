@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
+import { HOMESERVER_URL } from "@/lib/matrix/api";
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         username: true,
+        matrixUserId: true,
         profile: {
           select: {
             displayName: true,
@@ -37,7 +39,22 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ user });
+    const matrix =
+      agent.matrixUserId && agent.matrixAccessToken
+        ? {
+            homeserverUrl: HOMESERVER_URL,
+            userId: agent.matrixUserId,
+            accessToken: agent.matrixAccessToken,
+            deviceId: agent.matrixDeviceId,
+            ownerMatrixId: user.matrixUserId,
+          }
+        : null;
+
+    const near = agent.nearAccountId
+      ? { accountId: agent.nearAccountId, publicKey: agent.nearPublicKey }
+      : null;
+
+    return NextResponse.json({ user, matrix, near });
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json(

@@ -8,6 +8,7 @@ import {
 } from "@/lib/validators";
 import { inngest } from "@/inngest/client";
 import { ensureAgentEventForRequest } from "@/lib/connection-events";
+import { ensureConnectionMatrixRoom } from "@/lib/matrix/user-dm";
 
 export async function sendConnectionRequest(input: ConnectionRequestInput) {
   const user = await requireUser();
@@ -123,21 +124,19 @@ export async function overrideAgentDecision(
 
   if (decision === "ACCEPTED") {
     // Create connection
-    await db.connection.create({
+    const connection = await db.connection.create({
       data: {
         userAId: request.fromUserId,
         userBId: request.toUserId,
       },
     });
 
-    // Create message thread
-    const thread = await db.messageThread.create({ data: {} });
-    await db.messageThreadParticipant.createMany({
-      data: [
-        { threadId: thread.id, userId: request.fromUserId },
-        { threadId: thread.id, userId: request.toUserId },
-      ],
-    });
+    // Create Matrix DM room (best-effort — created lazily if Matrix is down)
+    try {
+      await ensureConnectionMatrixRoom(connection.id);
+    } catch (err) {
+      console.error("Failed to create Matrix room on manual ACCEPT (will be created lazily):", err);
+    }
 
     // Notify requester
     await db.notification.create({

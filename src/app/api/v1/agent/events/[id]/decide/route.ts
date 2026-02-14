@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentDecideSchema } from "@/lib/validators";
+import { ensureConnectionMatrixRoom } from "@/lib/matrix/user-dm";
 
 export async function POST(
   req: NextRequest,
@@ -90,16 +91,14 @@ async function processConnectionDecision(
       where: { id: requestId },
       data: { status: "ACCEPTED" },
     });
-    await db.connection.create({
+    const connection = await db.connection.create({
       data: { userAId: request.fromUserId, userBId: request.toUserId },
     });
-    const thread = await db.messageThread.create({ data: {} });
-    await db.messageThreadParticipant.createMany({
-      data: [
-        { threadId: thread.id, userId: request.fromUserId },
-        { threadId: thread.id, userId: request.toUserId },
-      ],
-    });
+    try {
+      await ensureConnectionMatrixRoom(connection.id);
+    } catch (err) {
+      console.error("Failed to create Matrix room on ACCEPT (will be created lazily):", err);
+    }
     await db.notification.create({
       data: {
         userId: request.fromUserId,

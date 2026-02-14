@@ -13,6 +13,11 @@ vi.mock("@/inngest/client", () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
+// Mock Matrix user-dm (room provisioning)
+vi.mock("@/lib/matrix/user-dm", () => ({
+  ensureConnectionMatrixRoom: vi.fn().mockResolvedValue("!mock-room:localhost"),
+}));
+
 import { POST as decideEvent } from "@/app/api/v1/agent/events/[id]/decide/route";
 import { POST as replyToEvent } from "@/app/api/v1/agent/events/[id]/reply/route";
 import { GET as getEvents } from "@/app/api/v1/agent/events/route";

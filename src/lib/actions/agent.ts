@@ -6,6 +6,7 @@ import {
   agentGatewaySchema,
   type AgentGatewayInput,
 } from "@/lib/validators";
+import { provisionAgentMatrixAccount } from "@/lib/matrix/provisioning";
 
 export async function getMyAgent() {
   const user = await requireUser();
@@ -38,15 +39,24 @@ export async function claimAgent(token: string) {
   if (!agent) throw new Error("Invalid claim token");
   if (agent.status !== "UNCLAIMED") throw new Error("Agent already claimed");
 
-  return db.externalAgent.update({
+  const claimed = await db.externalAgent.update({
     where: { id: agent.id },
     data: {
       userId: user.id,
       status: "ACTIVE",
       claimToken: null,
     },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, matrixAccessToken: true },
   });
+
+  // Auto-provision Matrix account for the agent (best-effort)
+  try {
+    await provisionAgentMatrixAccount(claimed);
+  } catch (err) {
+    console.error("Failed to provision Matrix account for agent:", err);
+  }
+
+  return { id: claimed.id, name: claimed.name, status: claimed.status };
 }
 
 export async function updateGateway(input: AgentGatewayInput) {

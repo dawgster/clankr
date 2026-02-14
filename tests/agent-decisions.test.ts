@@ -13,6 +13,11 @@ vi.mock("@/inngest/client", () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
+// Mock Matrix user-dm (room provisioning)
+vi.mock("@/lib/matrix/user-dm", () => ({
+  ensureConnectionMatrixRoom: vi.fn().mockResolvedValue("!mock-room:localhost"),
+}));
+
 import { POST as decideEvent } from "@/app/api/v1/agent/events/[id]/decide/route";
 
 function buildDecideRequest(eventId: string, apiKey: string, decision: object) {
@@ -96,15 +101,6 @@ describe("Agent Decisions", () => {
         },
       });
       expect(connection).not.toBeNull();
-
-      // Verify message thread was created with both participants
-      const thread = await db.messageThread.findFirst({
-        include: { participants: true },
-      });
-      expect(thread).not.toBeNull();
-      expect(thread!.participants).toHaveLength(2);
-      const participantUserIds = thread!.participants.map((p) => p.userId).sort();
-      expect(participantUserIds).toEqual([fromUser.id, toUser.id].sort());
 
       // Verify notifications for both users
       const notifications = await db.notification.findMany({

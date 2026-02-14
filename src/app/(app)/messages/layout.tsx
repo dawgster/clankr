@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ChatLayout } from "@/components/chat/chat-layout";
+import { MatrixChatLayout } from "@/components/chat/matrix-chat-layout";
 
 export default async function MessagesLayout({
   children,
@@ -9,29 +9,33 @@ export default async function MessagesLayout({
 }) {
   const user = await requireUser();
 
-  const participations = await db.messageThreadParticipant.findMany({
-    where: { userId: user.id },
-    include: {
-      thread: {
-        include: {
-          participants: {
-            include: { user: { include: { profile: true } } },
-          },
-          messages: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-          },
-        },
-      },
+  const connections = await db.connection.findMany({
+    where: {
+      OR: [{ userAId: user.id }, { userBId: user.id }],
     },
-    orderBy: { thread: { updatedAt: "desc" } },
+    include: {
+      userA: { include: { profile: true } },
+      userB: { include: { profile: true } },
+    },
+    orderBy: { createdAt: "desc" },
   });
 
-  const threads = participations.map((p) => p.thread);
+  const mapped = connections.map((c) => {
+    const otherUser = c.userAId === user.id ? c.userB : c.userA;
+    return {
+      id: c.id,
+      createdAt: c.createdAt,
+      otherUser: {
+        id: otherUser.id,
+        username: otherUser.username,
+        profile: otherUser.profile,
+      },
+    };
+  });
 
   return (
-    <ChatLayout threads={threads} currentUserId={user.id}>
+    <MatrixChatLayout connections={mapped}>
       {children}
-    </ChatLayout>
+    </MatrixChatLayout>
   );
 }
