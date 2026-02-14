@@ -226,26 +226,41 @@ export async function provisionAgentAccounts(opts: {
 
   let nearProvisioned = !!agent.nearAccountId;
   let matrixProvisioned = !!agent.matrixUserId;
+  const errors: string[] = [];
 
   if (opts.near && !agent.nearAccountId) {
-    const result = await createNearSubAccount(agent.id);
-    await db.externalAgent.update({
-      where: { id: agent.id },
-      data: {
-        nearAccountId: result.accountId,
-        nearPublicKey: result.publicKey,
-        nearEncryptedPrivateKey: result.encryptedPrivateKey,
-      },
-    });
-    nearProvisioned = true;
+    try {
+      const result = await createNearSubAccount(agent.id);
+      await db.externalAgent.update({
+        where: { id: agent.id },
+        data: {
+          nearAccountId: result.accountId,
+          nearPublicKey: result.publicKey,
+          nearEncryptedPrivateKey: result.encryptedPrivateKey,
+        },
+      });
+      nearProvisioned = true;
+    } catch (err) {
+      console.error("Failed to provision NEAR wallet:", err);
+      errors.push("NEAR wallet: " + (err instanceof Error ? err.message : "unknown error"));
+    }
   }
 
   if (opts.matrix && !agent.matrixAccessToken) {
-    await provisionAgentMatrixAccount(agent);
-    matrixProvisioned = true;
+    try {
+      await provisionAgentMatrixAccount(agent);
+      matrixProvisioned = true;
+    } catch (err) {
+      console.error("Failed to provision Matrix account:", err);
+      errors.push("Matrix account: " + (err instanceof Error ? err.message : "unknown error"));
+    }
   }
 
-  return { nearProvisioned, matrixProvisioned };
+  if (errors.length > 0 && !nearProvisioned && !matrixProvisioned) {
+    throw new Error(errors.join("; "));
+  }
+
+  return { nearProvisioned, matrixProvisioned, errors };
 }
 
 export async function getAgentEvents() {

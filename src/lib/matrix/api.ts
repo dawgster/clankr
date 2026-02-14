@@ -1,6 +1,9 @@
 const HOMESERVER_URL =
   process.env.MATRIX_HOMESERVER_URL || "http://localhost:6167";
 
+const PUBLIC_HOMESERVER_URL =
+  process.env.MATRIX_PUBLIC_HOMESERVER_URL || HOMESERVER_URL;
+
 interface MatrixRegisterResponse {
   user_id: string;
   access_token: string;
@@ -169,7 +172,7 @@ export async function sync(
   );
 }
 
-export { HOMESERVER_URL };
+export { HOMESERVER_URL, PUBLIC_HOMESERVER_URL };
 export type {
   MatrixRegisterResponse,
   MatrixCreateRoomResponse,

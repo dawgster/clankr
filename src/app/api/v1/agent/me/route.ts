@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
-import { HOMESERVER_URL } from "@/lib/matrix/api";
+import { PUBLIC_HOMESERVER_URL } from "@/lib/matrix/api";
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     const matrix =
       agent.matrixUserId && agent.matrixAccessToken
         ? {
-            homeserverUrl: HOMESERVER_URL,
+            homeserverUrl: PUBLIC_HOMESERVER_URL,
             userId: agent.matrixUserId,
             accessToken: agent.matrixAccessToken,
             deviceId: agent.matrixDeviceId,
