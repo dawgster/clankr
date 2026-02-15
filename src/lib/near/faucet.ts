@@ -26,6 +26,8 @@ export async function requestFaucetFunds(opts: {
     privateKey as KeyPairString,
   );
 
+  console.log("[faucet] requesting funds for", opts.accountId, "amount", FAUCET_AMOUNT.toString());
+
   const result = await account.callFunctionRaw({
     contractId: FAUCET_CONTRACT_ID,
     methodName: "request_near",
