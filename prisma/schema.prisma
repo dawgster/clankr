@@ -86,6 +86,7 @@ model ExternalAgent {
   matrixUserId      String?
   matrixAccessToken String?
   matrixDeviceId    String?
+  matrixDmRoomId    String?
 
   nearAccountId           String?   @unique
   nearPublicKey           String?

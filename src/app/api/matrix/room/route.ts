@@ -26,6 +26,15 @@ export async function POST() {
       );
     }
 
+    // Return existing DM room if we have one
+    if (agent.matrixDmRoomId) {
+      const updatedUser = await ensureUserMatrixAccount(user);
+      return NextResponse.json({
+        roomId: agent.matrixDmRoomId,
+        matrixUserId: updatedUser.matrixUserId,
+      });
+    }
+
     // Ensure user has a Matrix account
     const updatedUser = await ensureUserMatrixAccount(user);
 
@@ -44,6 +53,12 @@ export async function POST() {
 
     // Auto-join as the agent
     await joinRoom(agent.matrixAccessToken, room.room_id);
+
+    // Persist room ID so we reuse it on subsequent loads
+    await db.externalAgent.update({
+      where: { id: agent.id },
+      data: { matrixDmRoomId: room.room_id },
+    });
 
     return NextResponse.json({
       roomId: room.room_id,
