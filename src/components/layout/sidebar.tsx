@@ -13,17 +13,19 @@ import {
   MessageCircle,
   Search,
   Bell,
+  Sparkles,
 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/intent", label: "My Intent", icon: Sparkles },
   { href: "/discover", label: "Discover", icon: Search },
-  { href: "/connections", label: "Connections", icon: Users },
   { href: "/requests", label: "Requests", icon: Bell },
-  { href: "/agent", label: "My Agent", icon: Bot },
+  { href: "/connections", label: "Connections", icon: Users },
+  { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/agent-chat", label: "Agent Chat", icon: MessageCircle },
   { href: "/agent-chats", label: "Agent Chats", icon: BotMessageSquare },
-  { href: "/messages", label: "Messages", icon: MessageSquare },
+  { href: "/agent", label: "My Agent", icon: Bot },
   { href: "/profile/edit", label: "Profile", icon: User },
 ];
 
