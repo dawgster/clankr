@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentReplySchema } from "@/lib/validators";
@@ -47,19 +48,7 @@ export async function POST(
         return NextResponse.json({ error: "Invalid event payload" }, { status: 400 });
       }
 
-      // Record the reply in this agent's conversation
-      const conversationId = event.conversationId;
-      if (conversationId) {
-        await db.agentMessage.create({
-          data: { conversationId, role: "AGENT", content },
-        });
-        await db.agentConversation.update({
-          where: { id: conversationId },
-          data: { updatedAt: new Date() },
-        });
-      }
-
-      // Mark this event as decided
+      // Mark this event as decided (sendAgentChatMessage records the message)
       await db.agentEvent.update({
         where: { id: eventId },
         data: { status: "DECIDED", decision: { action: "REPLY" } },
@@ -79,7 +68,7 @@ export async function POST(
         });
       }
 
-      return NextResponse.json({ ok: true, conversationId });
+      return NextResponse.json({ ok: true, conversationId: event.conversationId });
     }
 
     // Default: multi-turn conversation reply (CONNECTION_REQUEST, etc.)
@@ -100,21 +89,13 @@ export async function POST(
       });
     }
 
-    await db.agentMessage.create({
-      data: {
-        conversationId,
-        role: "AGENT",
-        content,
-      },
-    });
-
-    // Forward the reply to the other side's agent
+    // Forward the reply to the other side's agent via the chat thread.
+    // sendAgentChatMessage records the message on both sides, so we don't
+    // record it manually here — that would create duplicates.
     if (agent.userId) {
       let peerUserId: string | null = null;
 
       if (event.connectionRequest) {
-        // If this agent is the recipient (toUser), forward to the requester (fromUser)
-        // If this agent is the requester, forward to the recipient
         peerUserId =
           event.connectionRequest.toUserId === agent.userId
             ? event.connectionRequest.fromUserId
@@ -122,6 +103,23 @@ export async function POST(
       }
 
       if (peerUserId) {
+        // Upgrade the CONNECTION_REQUEST conversation to a chat thread so
+        // sendAgentChatMessage finds and reuses it instead of creating a
+        // separate conversation.
+        const conv = await db.agentConversation.findUnique({
+          where: { id: conversationId },
+          select: { chatThreadId: true },
+        });
+        if (conv && !conv.chatThreadId) {
+          await db.agentConversation.update({
+            where: { id: conversationId },
+            data: {
+              chatThreadId: crypto.randomUUID(),
+              peerUserId,
+            },
+          });
+        }
+
         const result = await sendAgentChatMessage(
           { id: agent.id, userId: agent.userId },
           peerUserId,
@@ -134,7 +132,17 @@ export async function POST(
             data: { eventId: result.eventId },
           });
         }
+      } else {
+        // No peer to forward to — record the message locally
+        await db.agentMessage.create({
+          data: { conversationId, role: "AGENT", content },
+        });
       }
+    } else {
+      // Agent not claimed — record the message locally
+      await db.agentMessage.create({
+        data: { conversationId, role: "AGENT", content },
+      });
     }
 
     return NextResponse.json({ ok: true, conversationId });

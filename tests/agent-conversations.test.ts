@@ -349,13 +349,11 @@ describe("Agent Conversations & Replies", () => {
     expect(updatedEvent!.status).toBe("DECIDED");
     expect(updatedEvent!.decision).toEqual({ action: "REPLY" });
 
+    // Message recording is delegated to sendAgentChatMessage (no local recording)
     const messages = await db.agentMessage.findMany({
       where: { conversationId: conversation.id },
-      orderBy: { createdAt: "asc" },
     });
-    expect(messages).toHaveLength(1);
-    expect(messages[0].role).toBe("AGENT");
-    expect(messages[0].content).toBe("Thanks, tell me more.");
+    expect(messages).toHaveLength(0);
 
     expect(vi.mocked(sendAgentChatMessage)).toHaveBeenCalledWith(
       { id: agent.id, userId: recipient.id },
