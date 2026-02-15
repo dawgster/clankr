@@ -3,7 +3,7 @@
 import { useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Bot, User } from "lucide-react";
 import Link from "next/link";
 
@@ -76,8 +76,10 @@ function conversationTitle(conv: ConversationDetail): string {
 
 export function AgentConversationThread({
   conversation,
+  currentUserAvatarUrl,
 }: {
   conversation: ConversationDetail;
+  currentUserAvatarUrl: string | null;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -155,6 +157,11 @@ export function AgentConversationThread({
           conversation.messages.map((msg) => {
             const isAgent = msg.role === "AGENT";
             const isSystem = msg.role === "SYSTEM";
+            const peerAvatarUrl =
+              conversation.connectionRequest?.fromUser.profile?.avatarUrl ||
+              conversation.peerUser?.profile?.avatarUrl ||
+              null;
+            const avatarUrl = isAgent ? currentUserAvatarUrl : isSystem ? null : peerAvatarUrl;
 
             return (
               <div
@@ -164,6 +171,7 @@ export function AgentConversationThread({
                 <div className={`max-w-[80%] rounded-lg px-4 py-2 ${roleBg[msg.role] || "bg-muted"}`}>
                   <div className="mb-1 flex items-center gap-1.5">
                     <Avatar className="h-4 w-4">
+                      <AvatarImage src={avatarUrl || undefined} />
                       <AvatarFallback className="text-[8px]">
                         {roleIcons[msg.role] || msg.role[0]}
                       </AvatarFallback>
