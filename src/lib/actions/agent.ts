@@ -8,6 +8,8 @@ import {
 } from "@/lib/validators";
 import { provisionAgentMatrixAccount } from "@/lib/matrix/provisioning";
 import { createNearSubAccount } from "@/lib/near/account";
+import { requestFaucetFunds } from "@/lib/near/faucet";
+import { getNearBalance } from "@/lib/near/balance";
 
 export async function getMyAgent() {
   const user = await requireUser();
@@ -261,6 +263,39 @@ export async function provisionAgentAccounts(opts: {
   }
 
   return { nearProvisioned, matrixProvisioned, errors };
+}
+
+export async function fundAgentFromFaucet() {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+  if (!agent.nearAccountId || !agent.nearEncryptedPrivateKey) {
+    throw new Error("Agent does not have a NEAR wallet");
+  }
+
+  const result = await requestFaucetFunds({
+    accountId: agent.nearAccountId,
+    encryptedPrivateKey: agent.nearEncryptedPrivateKey,
+  });
+
+  return result;
+}
+
+export async function getAgentNearBalance() {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+  if (!agent.nearAccountId) {
+    throw new Error("Agent does not have a NEAR wallet");
+  }
+
+  return getNearBalance(agent.nearAccountId);
 }
 
 export async function getAgentEvents() {

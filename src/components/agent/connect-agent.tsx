@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Unplug, Wallet, MessageSquare, Wifi } from "lucide-react";
+import { Bot, Unplug, Wallet, MessageSquare, Wifi, Droplets } from "lucide-react";
 import {
   claimAgent,
   updateGateway,
   disconnectAgent,
   provisionAgentAccounts,
+  fundAgentFromFaucet,
+  getAgentNearBalance,
 } from "@/lib/actions/agent";
 
 type AgentInfo = {
@@ -225,7 +227,20 @@ function AgentAccountsCard({ agent }: { agent: NonNullable<AgentInfo> }) {
   const router = useRouter();
   const [provisioningNear, setProvisioningNear] = useState(false);
   const [provisioningMatrix, setProvisioningMatrix] = useState(false);
+  const [fundingFromFaucet, setFundingFromFaucet] = useState(false);
+  const [fundingSuccess, setFundingSuccess] = useState(false);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!agent.nearAccountId) return;
+    setLoadingBalance(true);
+    getAgentNearBalance()
+      .then((res) => setBalance(res.balanceNear))
+      .catch(() => setBalance(null))
+      .finally(() => setLoadingBalance(false));
+  }, [agent.nearAccountId]);
 
   async function handleProvisionNear() {
     setProvisioningNear(true);
@@ -259,6 +274,24 @@ function AgentAccountsCard({ agent }: { agent: NonNullable<AgentInfo> }) {
     }
   }
 
+  async function handleFundFromFaucet() {
+    setFundingFromFaucet(true);
+    setFundingSuccess(false);
+    setError("");
+    try {
+      await fundAgentFromFaucet();
+      setFundingSuccess(true);
+      const res = await getAgentNearBalance();
+      setBalance(res.balanceNear);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to fund from faucet",
+      );
+    } finally {
+      setFundingFromFaucet(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -268,27 +301,57 @@ function AgentAccountsCard({ agent }: { agent: NonNullable<AgentInfo> }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">NEAR Wallet:</span>
-            {agent.nearAccountId ? (
-              <span className="font-mono text-xs">{agent.nearAccountId}</span>
-            ) : (
-              <span className="text-muted-foreground italic">
-                Not provisioned
-              </span>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <Wallet className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">NEAR Wallet:</span>
+              {agent.nearAccountId ? (
+                <span className="font-mono text-xs">
+                  {agent.nearAccountId}
+                </span>
+              ) : (
+                <span className="text-muted-foreground italic">
+                  Not provisioned
+                </span>
+              )}
+            </div>
+            {!agent.nearAccountId && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleProvisionNear}
+                disabled={provisioningNear}
+              >
+                {provisioningNear ? "Creating..." : "Create NEAR Wallet"}
+              </Button>
             )}
           </div>
-          {!agent.nearAccountId && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleProvisionNear}
-              disabled={provisioningNear}
-            >
-              {provisioningNear ? "Creating..." : "Create NEAR Wallet"}
-            </Button>
+          {agent.nearAccountId && (
+            <div className="flex items-center justify-between pl-6">
+              <span className="text-sm text-muted-foreground">
+                Balance:{" "}
+                {loadingBalance
+                  ? "..."
+                  : balance !== null
+                    ? `${balance} NEAR`
+                    : "unavailable"}
+              </span>
+              <div className="flex items-center gap-2">
+                {fundingSuccess && (
+                  <span className="text-sm text-green-600">Funded!</span>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleFundFromFaucet}
+                  disabled={fundingFromFaucet}
+                >
+                  <Droplets className="mr-1 h-4 w-4" />
+                  {fundingFromFaucet ? "Funding..." : "Fund from Faucet"}
+                </Button>
+              </div>
+            </div>
           )}
         </div>
         <div className="flex items-center justify-between">
