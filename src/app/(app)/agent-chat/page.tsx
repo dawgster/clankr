@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useUser } from "@clerk/nextjs";
 import { Bot, Send, User, Loader2, AlertCircle } from "lucide-react";
 
 interface ChatMessage {
@@ -26,6 +27,7 @@ interface SyncResponse {
 }
 
 export default function AgentChatPage() {
+  const { user: clerkUser } = useUser();
   const [input, setInput] = useState("");
   const syncTokenRef = useRef<string | undefined>(undefined);
   const allMessagesRef = useRef<ChatMessage[]>([]);
@@ -191,6 +193,9 @@ export default function AgentChatPage() {
               >
                 <div className="mb-1 flex items-center gap-1.5">
                   <Avatar className="h-4 w-4">
+                    {msg.isOwn && clerkUser?.imageUrl && (
+                      <AvatarImage src={clerkUser.imageUrl} />
+                    )}
                     <AvatarFallback className="text-[8px]">
                       {msg.isOwn ? (
                         <User className="h-3 w-3" />
