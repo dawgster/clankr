@@ -28,10 +28,10 @@ export async function requestFaucetFunds(opts: {
 
   const result = await account.callFunctionRaw({
     contractId: FAUCET_CONTRACT_ID,
-    methodName: "request_near",
+    methodName: "request_funds",
     args: {
       receiver_id: opts.accountId,
-      request_amount: FAUCET_AMOUNT.toString(),
+      amount: FAUCET_AMOUNT.toString(),
     },
     gas: teraToGas("30"),
     deposit: BigInt(0),
