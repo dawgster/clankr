@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { sendMessage, sync } from "@/lib/matrix/api";
+import { sendMessage, sync, getMessages } from "@/lib/matrix/api";
 import type { MatrixMessage } from "@/lib/matrix/api";
 
 export async function GET(req: NextRequest) {
@@ -30,6 +30,34 @@ export async function GET(req: NextRequest) {
 
     const since = req.nextUrl.searchParams.get("since") || undefined;
 
+    if (!since) {
+      // Initial load: fetch history via /messages and get a sync token
+      const [history, syncResponse] = await Promise.all([
+        getMessages(dbUser.matrixAccessToken, roomId),
+        sync(dbUser.matrixAccessToken, undefined, 0),
+      ]);
+
+      const messages = history.chunk
+        .filter(
+          (e: MatrixMessage) =>
+            e.type === "m.room.message" && e.content.msgtype === "m.text",
+        )
+        .map((e: MatrixMessage) => ({
+          eventId: e.event_id,
+          sender: e.sender,
+          content: e.content.body,
+          timestamp: e.origin_server_ts,
+          isOwn: e.sender === dbUser.matrixUserId,
+        }))
+        .reverse(); // /messages returns newest-first, we want chronological
+
+      return NextResponse.json({
+        messages,
+        nextBatch: syncResponse.next_batch,
+      });
+    }
+
+    // Subsequent polls: use /sync for new messages
     const syncResponse = await sync(dbUser.matrixAccessToken, since, 0);
 
     const roomData = syncResponse.rooms?.join?.[roomId];
