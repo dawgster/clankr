@@ -3,7 +3,7 @@ import type { KeyPairString } from "near-api-js";
 import { decryptPrivateKey } from "./account";
 
 const FAUCET_CONTRACT_ID = "v2.faucet.nonofficial.testnet";
-const FAUCET_AMOUNT = nearToYocto("10");
+const FAUCET_AMOUNT = nearToYocto("1");
 
 export async function requestFaucetFunds(opts: {
   accountId: string;
@@ -28,10 +28,10 @@ export async function requestFaucetFunds(opts: {
 
   const result = await account.callFunctionRaw({
     contractId: FAUCET_CONTRACT_ID,
-    methodName: "request_funds",
+    methodName: "request_near",
     args: {
       receiver_id: opts.accountId,
-      amount: FAUCET_AMOUNT.toString(),
+      request_amount: FAUCET_AMOUNT.toString(),
     },
     gas: teraToGas("30"),
     deposit: BigInt(0),
