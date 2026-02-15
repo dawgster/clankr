@@ -1,42 +1,58 @@
 import { Account, JsonRpcProvider, nearToYocto, teraToGas } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
-import { decryptPrivateKey } from "./account";
 
 const FAUCET_CONTRACT_ID = "v2.faucet.nonofficial.testnet";
 const FAUCET_AMOUNT = nearToYocto("1");
 
+/**
+ * Request testnet NEAR from the faucet for an agent sub-account.
+ *
+ * The faucet contract rejects sub-accounts (e.g. a-xxx.clankr.testnet)
+ * as receiver, so we use the parent account to receive funds and then
+ * transfer them to the agent's sub-account.
+ */
 export async function requestFaucetFunds(opts: {
-  accountId: string;
-  encryptedPrivateKey: string;
+  agentAccountId: string;
 }): Promise<{ transactionHash: string }> {
   const networkId = process.env.NEAR_NETWORK_ID || "testnet";
   if (networkId !== "testnet") {
     throw new Error("Faucet is only available on testnet");
   }
 
-  const privateKey = decryptPrivateKey(opts.encryptedPrivateKey);
+  const parentAccountId = process.env.NEAR_PARENT_ACCOUNT_ID;
+  const parentPrivateKey = process.env.NEAR_PARENT_PRIVATE_KEY;
+  if (!parentAccountId || !parentPrivateKey) {
+    throw new Error(
+      "NEAR_PARENT_ACCOUNT_ID and NEAR_PARENT_PRIVATE_KEY are required",
+    );
+  }
 
   const provider = new JsonRpcProvider({
     url: `https://rpc.${networkId}.near.org`,
   });
 
-  const account = new Account(
-    opts.accountId,
+  const parentAccount = new Account(
+    parentAccountId,
     provider,
-    privateKey as KeyPairString,
+    parentPrivateKey as KeyPairString,
   );
 
-  console.log("[faucet] requesting funds for", opts.accountId, "amount", FAUCET_AMOUNT.toString());
-
-  const result = await account.callFunctionRaw({
+  // Step 1: Request funds from faucet to parent account
+  await parentAccount.callFunctionRaw({
     contractId: FAUCET_CONTRACT_ID,
     methodName: "request_near",
     args: {
-      receiver_id: opts.accountId,
+      receiver_id: parentAccountId,
       request_amount: FAUCET_AMOUNT.toString(),
     },
     gas: teraToGas("30"),
     deposit: BigInt(0),
+  });
+
+  // Step 2: Transfer from parent to agent sub-account
+  const result = await parentAccount.transfer({
+    receiverId: opts.agentAccountId,
+    amount: FAUCET_AMOUNT,
   });
 
   return {

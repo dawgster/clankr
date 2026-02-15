@@ -272,13 +272,12 @@ export async function fundAgentFromFaucet() {
     where: { userId: user.id },
   });
   if (!agent) throw new Error("No agent connected");
-  if (!agent.nearAccountId || !agent.nearEncryptedPrivateKey) {
+  if (!agent.nearAccountId) {
     throw new Error("Agent does not have a NEAR wallet");
   }
 
   const result = await requestFaucetFunds({
-    accountId: agent.nearAccountId,
-    encryptedPrivateKey: agent.nearEncryptedPrivateKey,
+    agentAccountId: agent.nearAccountId,
   });
 
   return result;
