@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { generateApiKey } from "@/lib/agent-auth";
 import { createNearSubAccount } from "@/lib/near/account";
 import { transferNear } from "@/lib/near/transfer";
+import { sendMessage } from "@/lib/matrix/api";
 import crypto from "crypto";
 
 const DEMO_SELLER = {
@@ -206,24 +207,33 @@ export async function startScriptedNegotiation(buyerUserId: string): Promise<{
   });
 
   // Run the script in the background (fire-and-forget)
-  runNegotiationScript(
-    buyerConversation.id,
-    buyerAgent.nearAccountId,
-    buyerAgent.nearEncryptedPrivateKey,
-    seller.nearAccountId,
-  ).catch((err) => {
+  runNegotiationScript({
+    conversationId: buyerConversation.id,
+    buyerAgentId: buyerAgent.id,
+    buyerNearAccountId: buyerAgent.nearAccountId,
+    buyerNearEncryptedPrivateKey: buyerAgent.nearEncryptedPrivateKey,
+    sellerNearAccountId: seller.nearAccountId,
+  }).catch((err) => {
     console.error("Scripted negotiation failed:", err);
   });
 
   return { conversationId: buyerConversation.id };
 }
 
-async function runNegotiationScript(
-  conversationId: string,
-  buyerNearAccountId: string,
-  buyerNearEncryptedPrivateKey: string,
-  sellerNearAccountId: string | null,
-) {
+async function runNegotiationScript(opts: {
+  conversationId: string;
+  buyerAgentId: string;
+  buyerNearAccountId: string;
+  buyerNearEncryptedPrivateKey: string;
+  sellerNearAccountId: string | null;
+}) {
+  const {
+    conversationId,
+    buyerAgentId,
+    buyerNearAccountId,
+    buyerNearEncryptedPrivateKey,
+    sellerNearAccountId,
+  } = opts;
   for (const line of NEGOTIATION_SCRIPT) {
     await sleep(line.delayMs);
 
@@ -269,13 +279,23 @@ async function runNegotiationScript(
 
       await sleep(2000);
 
-      await db.agentMessage.create({
-        data: {
-          conversationId,
-          role: "AGENT",
-          content: `I just bought you a bottle of coke for 2.1 NEAR. Enjoy!\n\nVerify on explorer: ${explorerBase}/txns/${result.transactionHash}`,
-        },
+      // Send a Matrix DM from the agent to the human
+      const agent = await db.externalAgent.findUnique({
+        where: { id: buyerAgentId },
+        select: { matrixAccessToken: true, matrixDmRoomId: true },
       });
+
+      if (agent?.matrixAccessToken && agent.matrixDmRoomId) {
+        try {
+          await sendMessage(
+            agent.matrixAccessToken,
+            agent.matrixDmRoomId,
+            `I just bought you a bottle of coke for 2.1 NEAR. Enjoy!\n\nVerify on explorer: ${explorerBase}/txns/${result.transactionHash}`,
+          );
+        } catch (matrixErr) {
+          console.error("Failed to send Matrix DM:", matrixErr);
+        }
+      }
     } catch (err) {
       console.error("NEAR transfer failed:", err);
       await db.agentMessage.create({
