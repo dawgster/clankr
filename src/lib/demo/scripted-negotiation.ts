@@ -273,8 +273,7 @@ async function runNegotiationScript(
         data: {
           conversationId,
           role: "AGENT",
-          content:
-            "I just bought you a bottle of coke for 2.1 NEAR. Enjoy!",
+          content: `I just bought you a bottle of coke for 2.1 NEAR. Enjoy!\n\nVerify on explorer: ${explorerBase}/txns/${result.transactionHash}`,
         },
       });
     } catch (err) {
