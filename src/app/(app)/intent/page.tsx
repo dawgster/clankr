@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -18,7 +17,6 @@ import { TagInput } from "@/components/profile/tag-input";
 import { Sparkles } from "lucide-react";
 
 export default function IntentPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -60,21 +58,6 @@ export default function IntentPage() {
       });
       setHasEmbedding(!!intent.trim());
       setSaved(true);
-
-      // Trigger scripted negotiation demo when intent mentions "bottle"
-      if (intent.toLowerCase().includes("bottle")) {
-        try {
-          const res = await fetch("/api/demo/negotiation", { method: "POST" });
-          const data = await res.json();
-          if (data.conversationId) {
-            router.push(`/agent-chats/${data.conversationId}`);
-            return;
-          }
-        } catch (err) {
-          console.error("Demo negotiation failed:", err);
-        }
-      }
-
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error(err);

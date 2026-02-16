@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -83,7 +82,6 @@ export function AgentConversationThread({
   currentUserAvatarUrl: string | null;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   const scrollToBottom = useCallback(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
@@ -92,15 +90,6 @@ export function AgentConversationThread({
   useEffect(() => {
     scrollToBottom();
   }, [conversation.messages, scrollToBottom]);
-
-  // Poll for new messages in active conversations
-  useEffect(() => {
-    if (conversation.status !== "ACTIVE") return;
-    const interval = setInterval(() => {
-      router.refresh();
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [conversation.status, router]);
 
   return (
     <div className="flex h-full flex-col px-4">
