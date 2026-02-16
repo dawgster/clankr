@@ -9,8 +9,8 @@ const DEMO_SELLER = {
   email: "drinks@demo.clankr.xyz",
   username: "drinks-vendor",
   displayName: "Drinks Vendor",
-  bio: "Local drinks vendor. Cold beverages, juices, and bottled water available for delivery.",
-  intent: "Selling drinks, bottled water, juices, and cold beverages",
+  bio: "Local drinks vendor. Coca-Cola, cold beverages, and bottled drinks available for delivery.",
+  intent: "Selling Coca-Cola, cold drinks, and bottled beverages",
   agentName: "DrinksBot",
 };
 
@@ -22,19 +22,19 @@ const NEGOTIATION_SCRIPT: Array<{
   {
     role: "USER",
     content:
-      "Hi! I saw you\u2019re looking for a bottle. I\u2019ve got a fresh full bottle of cold-pressed juice \u2014 perfect for this weather. I\u2019m selling it for 2.5 NEAR.",
+      "Hi! I saw you\u2019re looking for a bottle. I\u2019ve got a nice cold bottle of Coca-Cola \u2014 perfect for this weather. I\u2019m selling it for 2.5 NEAR.",
     delayMs: 10000,
   },
   {
     role: "AGENT",
     content:
-      "That sounds refreshing! My client is definitely interested. But 2.5 NEAR is a bit steep for a single bottle. How about 2.0 NEAR?",
+      "Nice, my client would love a cold Coke! But 2.5 NEAR is a bit steep for a single bottle. How about 2.0 NEAR?",
     delayMs: 11000,
   },
   {
     role: "USER",
     content:
-      "2.0 is a bit low \u2014 this is premium cold-pressed, not your regular store-bought stuff. Could you do 2.3 NEAR?",
+      "2.0 is a bit low \u2014 this is an ice-cold Coke, delivered right to you. Could you do 2.3 NEAR?",
     delayMs: 12000,
   },
   {
