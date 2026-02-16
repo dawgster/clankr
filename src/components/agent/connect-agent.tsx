@@ -8,7 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Unplug, Wallet, MessageSquare, Wifi, Droplets } from "lucide-react";
+import {
+  Bot,
+  Unplug,
+  Wallet,
+  MessageSquare,
+  Wifi,
+  Droplets,
+  Terminal,
+  Cloud,
+  Copy,
+  Check,
+  ArrowLeft,
+} from "lucide-react";
 import {
   claimAgent,
   updateGateway,
@@ -95,39 +107,140 @@ export function ConnectAgent({ agent }: { agent: AgentInfo }) {
     }
   }
 
-  // No agent connected — show claim form
+  const [selectedOption, setSelectedOption] = useState<
+    "byoa" | "ironclaw" | null
+  >(null);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(
+      "curl -s https://clankr-app-production.up.railway.app/SKILL.md",
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  // No agent connected — show option selector or selected option detail
   if (!agent) {
+    // BYOA detail view
+    if (selectedOption === "byoa") {
+      return (
+        <div className="space-y-4">
+          <button
+            onClick={() => setSelectedOption(null)}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Terminal className="h-5 w-5" />
+                Bring Your Own Agent
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Point your agent at the Clankr skill file to get started. Run
+                this command to fetch the instructions:
+              </p>
+
+              <div className="relative">
+                <pre className="rounded-lg bg-muted p-4 pr-12 text-sm font-mono overflow-x-auto">
+                  curl -s https://clankr-app-production.up.railway.app/SKILL.md
+                </pre>
+                <button
+                  onClick={handleCopy}
+                  className="absolute right-3 top-3 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Once your agent registers, paste the claim token below to link
+                it to your account.
+              </p>
+
+              <form onSubmit={handleClaim} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="claimToken">Claim Token</Label>
+                  <Input
+                    id="claimToken"
+                    value={claimToken}
+                    onChange={(e) => setClaimToken(e.target.value)}
+                    placeholder="clankr_claim_..."
+                    required
+                  />
+                </div>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <Button type="submit" disabled={loading}>
+                  {loading ? "Claiming..." : "Claim Agent"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // Option selector cards
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            Connect Your Agent
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Register an OpenClaw agent, then paste the claim token below to link
-            it to your account.
-          </p>
-          <form onSubmit={handleClaim} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="claimToken">Claim Token</Label>
-              <Input
-                id="claimToken"
-                value={claimToken}
-                onChange={(e) => setClaimToken(e.target.value)}
-                placeholder="clankr_claim_..."
-                required
-              />
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={loading}>
-              {loading ? "Claiming..." : "Claim Agent"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <button
+            onClick={() => setSelectedOption("byoa")}
+            className="group text-left"
+          >
+            <Card className="h-full transition-all hover:border-foreground/25 hover:-translate-y-0.5 cursor-pointer">
+              <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <Terminal className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">BYOA</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Bring Your Own Agent
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Connect an agent you already run. Fetch the skill file and
+                  claim it to your account.
+                </p>
+              </CardContent>
+            </Card>
+          </button>
+
+          <div className="relative">
+            <Card className="h-full opacity-60 cursor-not-allowed">
+              <CardContent className="flex flex-col items-center gap-3 p-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                  <Cloud className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">IronClaw</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Deploy on NEAR Cloud
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  One-click deploy a managed agent on NEAR AI Cloud. No setup
+                  required.
+                </p>
+                <Badge variant="secondary" className="mt-1">
+                  Coming Soon
+                </Badge>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
     );
   }
 
