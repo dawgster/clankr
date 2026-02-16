@@ -23,37 +23,37 @@ const NEGOTIATION_SCRIPT: Array<{
     role: "USER",
     content:
       "Hi! I saw you\u2019re looking for a bottle. I\u2019ve got a fresh full bottle of cold-pressed juice \u2014 perfect for this weather. I\u2019m selling it for 2.5 NEAR.",
-    delayMs: 3000,
+    delayMs: 10000,
   },
   {
     role: "AGENT",
     content:
       "That sounds refreshing! My client is definitely interested. But 2.5 NEAR is a bit steep for a single bottle. How about 2.0 NEAR?",
-    delayMs: 4000,
+    delayMs: 11000,
   },
   {
     role: "USER",
     content:
       "2.0 is a bit low \u2014 this is premium cold-pressed, not your regular store-bought stuff. Could you do 2.3 NEAR?",
-    delayMs: 4500,
+    delayMs: 12000,
   },
   {
     role: "AGENT",
     content:
       "Fair point on the quality. Let\u2019s meet closer to the middle \u2014 how about 2.05 NEAR?",
-    delayMs: 4000,
+    delayMs: 10000,
   },
   {
     role: "USER",
     content:
       "Tell you what \u2014 I\u2019ve got another buyer interested, but I\u2019d rather close this quickly. Let\u2019s settle at 2.1 NEAR and we have a deal.",
-    delayMs: 4000,
+    delayMs: 11000,
   },
   {
     role: "AGENT",
     content:
       "2.1 NEAR works for us \u2014 deal! Processing the payment now.",
-    delayMs: 3500,
+    delayMs: 10000,
   },
 ];
 
