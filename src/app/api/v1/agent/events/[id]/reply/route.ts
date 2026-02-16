@@ -131,6 +131,11 @@ export async function POST(
             name: "agent/event.created",
             data: { eventId: result.eventId },
           });
+        } else {
+          // Peer has no agent — record the message locally so it's not lost
+          await db.agentMessage.create({
+            data: { conversationId, role: "AGENT", content },
+          });
         }
       } else {
         // No peer to forward to — record the message locally

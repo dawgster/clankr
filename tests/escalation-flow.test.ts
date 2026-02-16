@@ -32,6 +32,8 @@ describe("Escalation Flow — ASK_MORE creates user-visible conversation", () =>
     const requester = await createTestUser({ displayName: "Requester Pat" });
     const recipient = await createTestUser({ displayName: "Recipient Sam" });
     const { agent, apiKey } = await createTestAgent(recipient.id, "Sam's Bot");
+    // Requester needs an agent so sendAgentChatMessage can deliver
+    const { agent: requesterAgent } = await createTestAgent(requester.id, "Pat's Bot");
 
     const connReq = await db.connectionRequest.create({
       data: {
@@ -93,31 +95,42 @@ describe("Escalation Flow — ASK_MORE creates user-visible conversation", () =>
     expect(notif!.body).toBe("What's the hourly rate and project timeline?");
     expect((notif!.metadata as Record<string, string>).requestId).toBe(connReq.id);
 
-    // 3. An agent conversation should exist with the agent's question as a message
-    const conversations = await db.agentConversation.findMany({
+    // 3. sendAgentChatMessage creates conversations on both sides linked by chatThreadId.
+    // The sender (recipient's agent) should have an outgoing AGENT message.
+    const senderConv = await db.agentConversation.findFirst({
       where: {
-        connectionRequestId: connReq.id,
         externalAgentId: agent.id,
+        chatThreadId: { not: null },
       },
       include: { messages: true },
     });
-
-    const withQuestion = conversations.filter((c) =>
-      c.messages.some(
-        (m) =>
-          m.role === "AGENT" &&
-          m.content === "What's the hourly rate and project timeline?",
-      ),
-    );
-    expect(withQuestion.length).toBeGreaterThanOrEqual(1);
-
-    // 4. Verify the message details
-    const questionMsg = withQuestion[0].messages.find(
-      (m) => m.role === "AGENT",
-    );
-    expect(questionMsg!.content).toBe(
+    expect(senderConv).not.toBeNull();
+    const outgoing = senderConv!.messages.find((m) => m.role === "AGENT");
+    expect(outgoing).toBeDefined();
+    expect(outgoing!.content).toBe(
       "What's the hourly rate and project timeline?",
     );
+
+    // 4. The requester's agent should have received an incoming USER message
+    const recipientConv = await db.agentConversation.findFirst({
+      where: {
+        externalAgentId: requesterAgent.id,
+        chatThreadId: { not: null },
+      },
+      include: { messages: true },
+    });
+    expect(recipientConv).not.toBeNull();
+    const incoming = recipientConv!.messages.find((m) => m.role === "USER");
+    expect(incoming).toBeDefined();
+    expect(incoming!.content).toBe(
+      "What's the hourly rate and project timeline?",
+    );
+
+    // 5. A NEW_MESSAGE event should have been created for the requester's agent
+    const newMsgEvent = await db.agentEvent.findFirst({
+      where: { externalAgentId: requesterAgent.id, type: "NEW_MESSAGE" },
+    });
+    expect(newMsgEvent).not.toBeNull();
   });
 
   it("ASK_MORE without reason should still notify but not create agent message", async () => {
