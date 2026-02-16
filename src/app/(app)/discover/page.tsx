@@ -136,7 +136,7 @@ export default async function DiscoverPage({
       </div>
 
       {!hasIntent && (
-        <Link href="/profile/edit">
+        <Link href="/intent">
           <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 transition-colors hover:bg-accent/50">
             <Sparkles className="h-5 w-5 text-muted-foreground" />
             <div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +15,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { updateProfile } from "@/lib/actions/profile";
-import { TagInput } from "@/components/profile/tag-input";
+import { Sparkles } from "lucide-react";
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -22,9 +23,6 @@ export default function EditProfilePage() {
   const [fetching, setFetching] = useState(true);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
-  const [intent, setIntent] = useState("");
-  const [interests, setInterests] = useState<string[]>([]);
-  const [lookingFor, setLookingFor] = useState<string[]>([]);
 
   useEffect(() => {
     fetch("/api/profile/me")
@@ -33,9 +31,6 @@ export default function EditProfilePage() {
         if (data.profile) {
           setDisplayName(data.profile.displayName || "");
           setBio(data.profile.bio || "");
-          setIntent(data.profile.intent || "");
-          setInterests(data.profile.interests || []);
-          setLookingFor(data.profile.lookingFor || []);
         }
       })
       .finally(() => setFetching(false));
@@ -45,7 +40,7 @@ export default function EditProfilePage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await updateProfile({ displayName, bio, intent, interests, lookingFor, links: [] });
+      await updateProfile({ displayName, bio, links: [] });
       router.refresh();
     } catch (err) {
       console.error(err);
@@ -67,7 +62,7 @@ export default function EditProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Edit Profile</CardTitle>
@@ -98,37 +93,25 @@ export default function EditProfilePage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="intent">Intent</Label>
-              <Textarea
-                id="intent"
-                value={intent}
-                onChange={(e) => setIntent(e.target.value)}
-                placeholder="Describe who you are and what you're looking for..."
-                rows={4}
-                maxLength={1000}
-              />
-              <p className="text-xs text-muted-foreground">
-                This helps match you with relevant people on the discover page.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Interests</Label>
-              <TagInput value={interests} onChange={setInterests} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Looking For</Label>
-              <TagInput value={lookingFor} onChange={setLookingFor} />
-            </div>
-
             <Button type="submit" disabled={loading}>
               {loading ? "Saving..." : "Save Changes"}
             </Button>
           </form>
         </CardContent>
       </Card>
+
+      <Link href="/intent">
+        <div className="flex items-center gap-3 rounded-lg border border-dashed p-4 transition-colors hover:bg-accent/50">
+          <Sparkles className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <p className="text-sm font-medium">Manage your discovery intent</p>
+            <p className="text-xs text-muted-foreground">
+              Set your intent, interests, and what you&apos;re looking for to
+              get matched with relevant people.
+            </p>
+          </div>
+        </div>
+      </Link>
     </div>
   );
 }

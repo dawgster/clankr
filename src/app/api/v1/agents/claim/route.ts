@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         status: "ACTIVE",
         claimToken: null,
       },
-      select: { id: true, name: true, status: true, apiKeyPrefix: true },
+      select: { id: true, name: true, status: true, apiKeyPrefix: true, nearAccountId: true },
     });
 
     return NextResponse.json(updated);

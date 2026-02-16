@@ -59,10 +59,16 @@ export const agentReplySchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
-export type ProfileInput = z.infer<typeof profileSchema>;
+export const agentTransferSchema = z.object({
+  recipientUserId: z.string().min(1),
+  amount: z.string().min(1).max(50), // NEAR amount as string, e.g. "0.5"
+});
+
+export type ProfileInput = z.input<typeof profileSchema>;
 export type ConnectionRequestInput = z.infer<typeof connectionRequestSchema>;
 export type DirectMessageInput = z.infer<typeof directMessageSchema>;
 export type AgentRegisterInput = z.infer<typeof agentRegisterSchema>;
 export type AgentClaimInput = z.infer<typeof agentClaimSchema>;
 export type AgentGatewayInput = z.infer<typeof agentGatewaySchema>;
 export type AgentDecideInput = z.infer<typeof agentDecideSchema>;
+export type AgentTransferInput = z.infer<typeof agentTransferSchema>;

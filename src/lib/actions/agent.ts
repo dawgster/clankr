@@ -6,6 +6,10 @@ import {
   agentGatewaySchema,
   type AgentGatewayInput,
 } from "@/lib/validators";
+import { provisionAgentMatrixAccount } from "@/lib/matrix/provisioning";
+import { createNearSubAccount } from "@/lib/near/account";
+import { requestFaucetFunds } from "@/lib/near/faucet";
+import { getNearBalance } from "@/lib/near/balance";
 
 export async function getMyAgent() {
   const user = await requireUser();
@@ -20,6 +24,8 @@ export async function getMyAgent() {
       webhookEnabled: true,
       lastSeenAt: true,
       createdAt: true,
+      nearAccountId: true,
+      matrixUserId: true,
     },
   });
 }
@@ -38,15 +44,24 @@ export async function claimAgent(token: string) {
   if (!agent) throw new Error("Invalid claim token");
   if (agent.status !== "UNCLAIMED") throw new Error("Agent already claimed");
 
-  return db.externalAgent.update({
+  const claimed = await db.externalAgent.update({
     where: { id: agent.id },
     data: {
       userId: user.id,
       status: "ACTIVE",
       claimToken: null,
     },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, matrixAccessToken: true },
   });
+
+  // Auto-provision Matrix account for the agent (best-effort)
+  try {
+    await provisionAgentMatrixAccount(claimed);
+  } catch (err) {
+    console.error("Failed to provision Matrix account for agent:", err);
+  }
+
+  return { id: claimed.id, name: claimed.name, status: claimed.status };
 }
 
 export async function updateGateway(input: AgentGatewayInput) {
@@ -198,6 +213,88 @@ export async function getAgentConversation(conversationId: string) {
     : null;
 
   return { ...conversation, peerUser };
+}
+
+export async function provisionAgentAccounts(opts: {
+  near?: boolean;
+  matrix?: boolean;
+}) {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+
+  let nearProvisioned = !!agent.nearAccountId;
+  let matrixProvisioned = !!agent.matrixUserId;
+  const errors: string[] = [];
+
+  if (opts.near && !agent.nearAccountId) {
+    try {
+      const result = await createNearSubAccount(agent.id);
+      await db.externalAgent.update({
+        where: { id: agent.id },
+        data: {
+          nearAccountId: result.accountId,
+          nearPublicKey: result.publicKey,
+          nearEncryptedPrivateKey: result.encryptedPrivateKey,
+        },
+      });
+      nearProvisioned = true;
+    } catch (err) {
+      console.error("Failed to provision NEAR wallet:", err);
+      errors.push("NEAR wallet: " + (err instanceof Error ? err.message : "unknown error"));
+    }
+  }
+
+  if (opts.matrix && !agent.matrixAccessToken) {
+    try {
+      await provisionAgentMatrixAccount(agent);
+      matrixProvisioned = true;
+    } catch (err) {
+      console.error("Failed to provision Matrix account:", err);
+      errors.push("Matrix account: " + (err instanceof Error ? err.message : "unknown error"));
+    }
+  }
+
+  if (errors.length > 0 && !nearProvisioned && !matrixProvisioned) {
+    throw new Error(errors.join("; "));
+  }
+
+  return { nearProvisioned, matrixProvisioned, errors };
+}
+
+export async function fundAgentFromFaucet() {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+  if (!agent.nearAccountId) {
+    throw new Error("Agent does not have a NEAR wallet");
+  }
+
+  const result = await requestFaucetFunds({
+    agentAccountId: agent.nearAccountId,
+  });
+
+  return result;
+}
+
+export async function getAgentNearBalance() {
+  const user = await requireUser();
+
+  const agent = await db.externalAgent.findUnique({
+    where: { userId: user.id },
+  });
+  if (!agent) throw new Error("No agent connected");
+  if (!agent.nearAccountId) {
+    throw new Error("Agent does not have a NEAR wallet");
+  }
+
+  return getNearBalance(agent.nearAccountId);
 }
 
 export async function getAgentEvents() {

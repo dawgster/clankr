@@ -9,6 +9,11 @@ vi.mock("@/inngest/client", () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
+// Mock Matrix user-dm (room provisioning)
+vi.mock("@/lib/matrix/user-dm", () => ({
+  ensureConnectionMatrixRoom: vi.fn().mockResolvedValue("!mock-room:localhost"),
+}));
+
 import { POST as agentConnect } from "@/app/api/v1/agent/connect/route";
 import { GET as getEvents } from "@/app/api/v1/agent/events/route";
 import { POST as decideEvent } from "@/app/api/v1/agent/events/[id]/decide/route";
@@ -112,11 +117,6 @@ describe("End-to-End Agent Interaction Flows", () => {
     });
     expect(finalRequest!.status).toBe("ACCEPTED");
 
-    const threads = await db.messageThread.findMany({
-      include: { participants: true },
-    });
-    expect(threads).toHaveLength(1);
-    expect(threads[0].participants).toHaveLength(2);
   });
 
   it("agent event is created synchronously — visible before any Inngest processing", async () => {

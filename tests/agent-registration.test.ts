@@ -9,14 +9,31 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: vi.fn(),
 }));
 
+// Mock NEAR account creation
+vi.mock("@/lib/near/account", () => ({
+  createNearSubAccount: vi.fn(),
+}));
+
 import { auth } from "@clerk/nextjs/server";
+import { createNearSubAccount } from "@/lib/near/account";
 import { POST as registerAgent } from "@/app/api/v1/agents/register/route";
 import { POST as claimAgent } from "@/app/api/v1/agents/claim/route";
 
 describe("Agent Registration & Claiming", () => {
+  let nearCallCount: number;
   beforeEach(async () => {
     await cleanDatabase();
     vi.clearAllMocks();
+    nearCallCount = 0;
+    vi.mocked(createNearSubAccount).mockImplementation(async () => {
+      nearCallCount++;
+      const suffix = `${Date.now()}-${nearCallCount}`;
+      return {
+        accountId: `a-${suffix}.clankr.testnet`,
+        publicKey: `ed25519:FakePublicKey${suffix}`,
+        encryptedPrivateKey: `encrypted-key-data-${suffix}`,
+      };
+    });
   });
 
   describe("POST /api/v1/agents/register", () => {
@@ -33,6 +50,7 @@ describe("Agent Registration & Claiming", () => {
       const body = await res.json();
       expect(body.apiKey).toBeDefined();
       expect(body.claimToken).toBeDefined();
+      expect(body.nearAccountId).toMatch(/^a-.+\.clankr\.testnet$/);
       expect(body.apiKey).toMatch(/^clankr_/);
       expect(body.claimToken).toMatch(/^clankr_claim_/);
 
@@ -68,6 +86,35 @@ describe("Agent Registration & Claiming", () => {
       const res = await registerAgent(req);
       const body = await res.json();
       expect(validateApiKeyFormat(body.apiKey)).toBe(true);
+    });
+
+    it("should succeed even if NEAR account creation fails", async () => {
+      vi.mocked(createNearSubAccount).mockRejectedValue(
+        new Error("NEAR RPC unavailable"),
+      );
+
+      const req = new Request("http://localhost/api/v1/agents/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "NEAR Fail Agent" }),
+      });
+
+      const res = await registerAgent(req);
+      expect(res.status).toBe(201);
+
+      const body = await res.json();
+      expect(body.apiKey).toBeDefined();
+      expect(body.claimToken).toBeDefined();
+      expect(body.nearAccountId).toBeNull();
+      expect(body.warning).toMatch(/NEAR account creation failed/);
+
+      // Agent should still exist in DB
+      const hash = hashApiKey(body.apiKey);
+      const agent = await db.externalAgent.findUnique({
+        where: { apiKeyHash: hash },
+      });
+      expect(agent).not.toBeNull();
+      expect(agent!.nearAccountId).toBeNull();
     });
   });
 

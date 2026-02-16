@@ -21,6 +21,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  matrixUserId      String?
+  matrixAccessToken String?
+  matrixDeviceId    String?
+
   profile       Profile?
   externalAgent ExternalAgent?
 
@@ -78,6 +82,15 @@ model ExternalAgent {
   lastSeenAt     DateTime?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+
+  matrixUserId      String?
+  matrixAccessToken String?
+  matrixDeviceId    String?
+  matrixDmRoomId    String?
+
+  nearAccountId           String?   @unique
+  nearPublicKey           String?
+  nearEncryptedPrivateKey String?
 
   conversations AgentConversation[]
   events        AgentEvent[]
@@ -199,12 +212,13 @@ model ConnectionRequest {
 }
 
 model Connection {
-  id        String   @id @default(cuid())
-  userAId   String
-  userA     User     @relation("ConnectionA", fields: [userAId], references: [id], onDelete: Cascade)
-  userBId   String
-  userB     User     @relation("ConnectionB", fields: [userBId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  userAId      String
+  userA        User     @relation("ConnectionA", fields: [userAId], references: [id], onDelete: Cascade)
+  userBId      String
+  userB        User     @relation("ConnectionB", fields: [userBId], references: [id], onDelete: Cascade)
+  matrixRoomId String?
+  createdAt    DateTime @default(now())
 
   @@unique([userAId, userBId])
 }

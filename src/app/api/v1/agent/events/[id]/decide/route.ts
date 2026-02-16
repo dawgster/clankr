@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { db } from "@/lib/db";
 import { authenticateAgent, AuthError } from "@/lib/agent-auth";
 import { agentDecideSchema } from "@/lib/validators";
+import { ensureConnectionMatrixRoom } from "@/lib/matrix/user-dm";
+import { sendAgentChatMessage } from "@/lib/agent-chat";
+import { inngest } from "@/inngest/client";
 
 export async function POST(
   req: NextRequest,
@@ -52,7 +56,11 @@ export async function POST(
       event.type === "CONNECTION_REQUEST" &&
       event.connectionRequest
     ) {
-      await processConnectionDecision(event.connectionRequestId!, decisionData, agent.id);
+      await processConnectionDecision(
+        event.connectionRequestId!,
+        decisionData,
+        { id: agent.id, userId: agent.userId },
+      );
     }
     // NEW_MESSAGE: ACCEPT = acknowledge, no further processing needed
 
@@ -78,7 +86,7 @@ export async function POST(
 async function processConnectionDecision(
   requestId: string,
   decision: { decision: string; confidence?: number; reason?: string },
-  agentId: string,
+  agent: { id: string; userId: string | null },
 ) {
   const request = await db.connectionRequest.findUnique({
     where: { id: requestId },
@@ -90,16 +98,14 @@ async function processConnectionDecision(
       where: { id: requestId },
       data: { status: "ACCEPTED" },
     });
-    await db.connection.create({
+    const connection = await db.connection.create({
       data: { userAId: request.fromUserId, userBId: request.toUserId },
     });
-    const thread = await db.messageThread.create({ data: {} });
-    await db.messageThreadParticipant.createMany({
-      data: [
-        { threadId: thread.id, userId: request.fromUserId },
-        { threadId: thread.id, userId: request.toUserId },
-      ],
-    });
+    try {
+      await ensureConnectionMatrixRoom(connection.id);
+    } catch (err) {
+      console.error("Failed to create Matrix room on ACCEPT (will be created lazily):", err);
+    }
     await db.notification.create({
       data: {
         userId: request.fromUserId,
@@ -147,22 +153,26 @@ async function processConnectionDecision(
       data: { status: "IN_CONVERSATION" },
     });
 
-    // Create conversation + message if reason provided
-    if (decision.reason) {
-      const conversation = await db.agentConversation.create({
-        data: {
-          externalAgentId: agentId,
-          connectionRequestId: requestId,
-          status: "ACTIVE",
-        },
-      });
-      await db.agentMessage.create({
-        data: {
-          conversationId: conversation.id,
-          role: "AGENT",
-          content: decision.reason,
-        },
-      });
+    // Forward the question to the other agent so they can poll for it.
+    // sendAgentChatMessage records the message on both sides.
+    if (decision.reason && agent.userId) {
+      const peerUserId =
+        request.toUserId === agent.userId
+          ? request.fromUserId
+          : request.toUserId;
+
+      const result = await sendAgentChatMessage(
+        { id: agent.id, userId: agent.userId },
+        peerUserId,
+        decision.reason,
+      );
+
+      if (result) {
+        await inngest.send({
+          name: "agent/event.created",
+          data: { eventId: result.eventId },
+        });
+      }
     }
 
     await db.notification.create({

@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getOrCreateThread } from "@/lib/actions/message";
+import { db } from "@/lib/db";
 import { EmptyState } from "@/components/chat/empty-state";
 
 export default async function MessagesPage({
@@ -10,11 +10,23 @@ export default async function MessagesPage({
 }) {
   const { with: withUserId } = await searchParams;
 
-  // If "with" param, redirect to or create thread
   if (withUserId) {
-    await requireUser();
-    const threadId = await getOrCreateThread(withUserId);
-    redirect(`/messages/${threadId}`);
+    const user = await requireUser();
+
+    const connection = await db.connection.findFirst({
+      where: {
+        OR: [
+          { userAId: user.id, userBId: withUserId },
+          { userAId: withUserId, userBId: user.id },
+        ],
+      },
+    });
+
+    if (!connection) {
+      redirect("/connections");
+    }
+
+    redirect(`/messages/${connection.id}`);
   }
 
   return <EmptyState />;

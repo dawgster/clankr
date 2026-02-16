@@ -13,6 +13,11 @@ vi.mock("@/inngest/client", () => ({
   inngest: { send: vi.fn().mockResolvedValue(undefined) },
 }));
 
+// Mock Matrix user-dm (room provisioning)
+vi.mock("@/lib/matrix/user-dm", () => ({
+  ensureConnectionMatrixRoom: vi.fn().mockResolvedValue("!mock-room:localhost"),
+}));
+
 import { POST as decideEvent } from "@/app/api/v1/agent/events/[id]/decide/route";
 
 function buildDecideRequest(eventId: string, apiKey: string, decision: object) {
@@ -97,15 +102,6 @@ describe("Agent Decisions", () => {
       });
       expect(connection).not.toBeNull();
 
-      // Verify message thread was created with both participants
-      const thread = await db.messageThread.findFirst({
-        include: { participants: true },
-      });
-      expect(thread).not.toBeNull();
-      expect(thread!.participants).toHaveLength(2);
-      const participantUserIds = thread!.participants.map((p) => p.userId).sort();
-      expect(participantUserIds).toEqual([fromUser.id, toUser.id].sort());
-
       // Verify notifications for both users
       const notifications = await db.notification.findMany({
         orderBy: { createdAt: "asc" },
@@ -162,10 +158,12 @@ describe("Agent Decisions", () => {
       expect(rejectionNotif!.userId).toBe(fromUser.id);
     });
 
-    it("should handle ASK_MORE decision with conversation creation", async () => {
+    it("should handle ASK_MORE decision by forwarding question to peer agent", async () => {
       const fromUser = await createTestUser({ displayName: "Curious From" });
       const toUser = await createTestUser({ displayName: "Curious To" });
-      const { agent, apiKey } = await createTestAgent(toUser.id);
+      const { agent: toAgent, apiKey } = await createTestAgent(toUser.id);
+      // fromUser also needs an active agent so sendAgentChatMessage can deliver
+      const { agent: fromAgent } = await createTestAgent(fromUser.id, "From Agent");
 
       const connReq = await db.connectionRequest.create({
         data: {
@@ -177,7 +175,7 @@ describe("Agent Decisions", () => {
       });
 
       const { event } = await createTestAgentEvent({
-        agentId: agent.id,
+        agentId: toAgent.id,
         type: "CONNECTION_REQUEST",
         connectionRequestId: connReq.id,
         payload: { requestId: connReq.id },
@@ -199,21 +197,43 @@ describe("Agent Decisions", () => {
       });
       expect(updatedReq!.status).toBe("IN_CONVERSATION");
 
-      // Should have created a new conversation with a message
-      const conversations = await db.agentConversation.findMany({
-        where: { connectionRequestId: connReq.id },
+      // sendAgentChatMessage creates conversations on both sides linked by chatThreadId.
+      // The sender (toAgent) should have an outgoing message.
+      const senderConv = await db.agentConversation.findFirst({
+        where: { externalAgentId: toAgent.id, chatThreadId: { not: null } },
         include: { messages: true },
       });
-      // The event creation already creates one, plus the ASK_MORE creates another
-      const withMessages = conversations.filter((c) => c.messages.length > 0);
-      expect(withMessages.length).toBeGreaterThanOrEqual(1);
-      const agentMessage = withMessages[0].messages.find(
-        (m) => m.role === "AGENT",
-      );
-      expect(agentMessage).toBeDefined();
-      expect(agentMessage!.content).toBe(
+      expect(senderConv).not.toBeNull();
+      const outgoing = senderConv!.messages.find((m) => m.role === "AGENT");
+      expect(outgoing).toBeDefined();
+      expect(outgoing!.content).toBe(
         "Can you tell me more about your business?",
       );
+
+      // The recipient (fromAgent) should have an incoming message.
+      const recipientConv = await db.agentConversation.findFirst({
+        where: { externalAgentId: fromAgent.id, chatThreadId: { not: null } },
+        include: { messages: true },
+      });
+      expect(recipientConv).not.toBeNull();
+      const incoming = recipientConv!.messages.find((m) => m.role === "USER");
+      expect(incoming).toBeDefined();
+      expect(incoming!.content).toBe(
+        "Can you tell me more about your business?",
+      );
+
+      // A NEW_MESSAGE event should have been created for fromAgent
+      const newMsgEvent = await db.agentEvent.findFirst({
+        where: { externalAgentId: fromAgent.id, type: "NEW_MESSAGE" },
+      });
+      expect(newMsgEvent).not.toBeNull();
+
+      // inngest should have been triggered to deliver the event
+      const { inngest: mockInngest } = await import("@/inngest/client");
+      expect(mockInngest.send).toHaveBeenCalledWith({
+        name: "agent/event.created",
+        data: { eventId: newMsgEvent!.id },
+      });
     });
 
     it("should return 409 for already-decided event", async () => {

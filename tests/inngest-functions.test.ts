@@ -1,36 +1,35 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { cleanDatabase } from "./helpers/setup";
-import {
-  createTestUser,
-  createTestAgent,
-} from "./helpers/seed";
+import { createTestUser, createTestAgent, createTestAgentEvent } from "./helpers/seed";
 
-/**
- * The Inngest functions use inngest.createFunction which wraps logic
- * in step.run / step.sleep callbacks. We test the core logic by
- * extracting and executing the inner step functions directly against
- * the real database.
- *
- * For the inngest client mock, we capture the `send` calls so we can
- * verify which downstream events are fired.
- */
-
-// Mock inngest client — capture sends
 const inngestSendMock = vi.fn().mockResolvedValue(undefined);
+
 vi.mock("@/inngest/client", () => ({
   inngest: {
     send: (...args: unknown[]) => inngestSendMock(...args),
-    createFunction: vi.fn((_config: unknown, _trigger: unknown, handler: Function) => handler),
+    createFunction: vi.fn(
+      (_config: unknown, _trigger: unknown, handler: (...args: unknown[]) => unknown) =>
+        handler,
+    ),
   },
 }));
 
-// Mock webhook dispatch
+const dispatchWebhookMock = vi.fn().mockResolvedValue(true);
 vi.mock("@/lib/webhook", () => ({
-  dispatchWebhook: vi.fn().mockResolvedValue(true),
+  dispatchWebhook: (...args: unknown[]) => dispatchWebhookMock(...args),
 }));
 
-import { dispatchWebhook } from "@/lib/webhook";
+import { evaluateConnection } from "@/inngest/functions/evaluate-connection";
+import { dispatchAgentEvent } from "@/inngest/functions/dispatch-agent-event";
+import { expireAgentEvents } from "@/inngest/functions/expire-agent-events";
+
+function buildStep() {
+  return {
+    run: vi.fn(async (_name: string, fn: () => unknown) => fn()),
+    sleep: vi.fn(async () => undefined),
+  };
+}
 
 describe("Inngest Functions — evaluate-connection", () => {
   beforeEach(async () => {
@@ -38,183 +37,139 @@ describe("Inngest Functions — evaluate-connection", () => {
     vi.clearAllMocks();
   });
 
-  it("should create agent event and conversation when recipient has active agent", async () => {
-    const fromUser = await createTestUser({
-      displayName: "Alice",
-      bio: "ML engineer",
-      interests: ["AI", "ML"],
-    });
-    const toUser = await createTestUser({ displayName: "Bob" });
-    const { agent: toAgent } = await createTestAgent(toUser.id, "Bob's Agent");
+  it("creates one event and conversation for active recipient agent; second run is idempotent", async () => {
+    const fromUser = await createTestUser({ displayName: "From Eval" });
+    const toUser = await createTestUser({ displayName: "To Eval" });
+    const { agent: toAgent } = await createTestAgent(toUser.id, "To Agent");
 
-    const connReq = await db.connectionRequest.create({
+    const request = await db.connectionRequest.create({
       data: {
         fromUserId: fromUser.id,
         toUserId: toUser.id,
         category: "COLLABORATION",
-        intent: "Let's work on AI together",
+        intent: "We should collaborate",
       },
     });
 
-    // Directly execute the core logic from evaluate-connection
-    const request = await db.connectionRequest.findUnique({
-      where: { id: connReq.id },
-      include: {
-        fromUser: { include: { profile: true } },
-        toUser: { include: { externalAgent: true } },
-      },
+    const step1 = buildStep();
+    const first = await evaluateConnection({
+      event: { data: { requestId: request.id } },
+      step: step1,
+    } as any);
+
+    const step2 = buildStep();
+    const second = await evaluateConnection({
+      event: { data: { requestId: request.id } },
+      step: step2,
+    } as any);
+
+    expect(first.type).toBe("event_created");
+    expect(second.type).toBe("event_exists");
+    expect(step1.run).toHaveBeenCalledWith("evaluate", expect.any(Function));
+
+    const events = await db.agentEvent.findMany({
+      where: { connectionRequestId: request.id, externalAgentId: toAgent.id },
     });
+    expect(events).toHaveLength(1);
 
-    const agent = request!.toUser.externalAgent!;
-
-    const conversation = await db.agentConversation.create({
-      data: {
-        externalAgentId: agent.id,
-        connectionRequestId: connReq.id,
-        status: "ACTIVE",
-      },
+    const conversations = await db.agentConversation.findMany({
+      where: { connectionRequestId: request.id, externalAgentId: toAgent.id },
     });
+    expect(conversations).toHaveLength(1);
 
-    const fromProfile = request!.fromUser.profile;
-
-    const agentEvent = await db.agentEvent.create({
-      data: {
-        externalAgentId: agent.id,
-        type: "CONNECTION_REQUEST",
-        connectionRequestId: connReq.id,
-        conversationId: conversation.id,
-        payload: {
-          requestId: connReq.id,
-          fromUser: {
-            username: request!.fromUser.username,
-            displayName: fromProfile?.displayName || request!.fromUser.username,
-            bio: fromProfile?.bio || "",
-            interests: fromProfile?.interests || [],
-          },
-          category: request!.category,
-          intent: request!.intent,
-        },
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
+    expect(inngestSendMock).toHaveBeenCalledTimes(1);
+    expect(inngestSendMock).toHaveBeenCalledWith({
+      name: "agent/event.created",
+      data: { eventId: events[0].id },
     });
-
-    // Verify agent event
-    expect(agentEvent.type).toBe("CONNECTION_REQUEST");
-    expect(agentEvent.externalAgentId).toBe(toAgent.id);
-    expect(agentEvent.connectionRequestId).toBe(connReq.id);
-    expect(agentEvent.conversationId).toBe(conversation.id);
-    const payload = agentEvent.payload as Record<string, unknown>;
-    expect(payload.requestId).toBe(connReq.id);
-    expect(payload.category).toBe("COLLABORATION");
-    expect(payload.intent).toBe("Let's work on AI together");
-    const fromUserPayload = payload.fromUser as Record<string, unknown>;
-    expect(fromUserPayload.displayName).toBe("Alice");
-    expect(fromUserPayload.bio).toBe("ML engineer");
-    expect(fromUserPayload.interests).toEqual(["AI", "ML"]);
-
-    // Verify conversation
-    const conv = await db.agentConversation.findUnique({
-      where: { id: conversation.id },
-    });
-    expect(conv!.status).toBe("ACTIVE");
-    expect(conv!.connectionRequestId).toBe(connReq.id);
-
-    // Verify expiry is approximately 24 hours out
-    const hoursUntilExpiry =
-      (agentEvent.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60);
-    expect(hoursUntilExpiry).toBeGreaterThan(23);
-    expect(hoursUntilExpiry).toBeLessThanOrEqual(24);
   });
 
-  it("should notify user when recipient has no active agent", async () => {
-    const fromUser = await createTestUser({ displayName: "Sender" });
-    const toUser = await createTestUser({ displayName: "No Agent User" });
-    // toUser has NO agent
+  it("creates at most one notification when recipient has no active agent", async () => {
+    const fromUser = await createTestUser({ displayName: "From No Agent" });
+    const toUser = await createTestUser({ displayName: "To No Agent" });
 
-    const connReq = await db.connectionRequest.create({
+    const request = await db.connectionRequest.create({
       data: {
         fromUserId: fromUser.id,
         toUserId: toUser.id,
-        intent: "Want to connect",
+        intent: "Ping",
       },
     });
 
-    // Simulate the no-agent branch of evaluate-connection
-    const request = await db.connectionRequest.findUnique({
-      where: { id: connReq.id },
-      include: {
-        fromUser: { include: { profile: true } },
-        toUser: { include: { externalAgent: true } },
-      },
-    });
+    await evaluateConnection({
+      event: { data: { requestId: request.id } },
+      step: buildStep(),
+    } as any);
+    await evaluateConnection({
+      event: { data: { requestId: request.id } },
+      step: buildStep(),
+    } as any);
 
-    const agent = request!.toUser.externalAgent;
-    expect(agent).toBeNull();
-
-    // This is what evaluate-connection does when there's no agent
-    await db.notification.create({
-      data: {
-        userId: request!.toUserId,
-        type: "CONNECTION_REQUEST",
-        title: "New connection request",
-        body: "Connect an agent to process requests automatically.",
-        metadata: { requestId: connReq.id },
-      },
-    });
-
-    // Verify notification was created for the recipient
-    const notif = await db.notification.findFirst({
+    const notifications = await db.notification.findMany({
       where: { userId: toUser.id, type: "CONNECTION_REQUEST" },
     });
-    expect(notif).not.toBeNull();
-    expect(notif!.title).toBe("New connection request");
-    expect(notif!.body).toContain("Connect an agent");
-    expect((notif!.metadata as Record<string, string>).requestId).toBe(connReq.id);
+    expect(notifications).toHaveLength(1);
+    expect((notifications[0].metadata as Record<string, string>).requestId).toBe(
+      request.id,
+    );
+
+    expect(inngestSendMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Inngest Functions — dispatch-agent-event", () => {
+  beforeEach(async () => {
+    await cleanDatabase();
+    vi.clearAllMocks();
   });
 
-  it("should notify user when recipient has suspended agent", async () => {
-    const fromUser = await createTestUser({ displayName: "Sender 2" });
-    const toUser = await createTestUser({ displayName: "Suspended Agent User" });
-    // Create a SUSPENDED agent
-    const { agent } = await createTestAgent(toUser.id, "Suspended Bot");
-    await db.externalAgent.update({
+  it("dispatches webhook for eligible events, then schedules timeout event", async () => {
+    const owner = await createTestUser({ displayName: "Dispatch Owner" });
+    const { agent } = await createTestAgent(owner.id, "Dispatch Agent");
+
+    const updatedAgent = await db.externalAgent.update({
       where: { id: agent.id },
-      data: { status: "SUSPENDED" },
-    });
-
-    const connReq = await db.connectionRequest.create({
       data: {
-        fromUserId: fromUser.id,
-        toUserId: toUser.id,
-        intent: "Connect please",
+        gatewayUrl: "http://agent-gateway.test",
+        webhookEnabled: true,
       },
     });
 
-    const request = await db.connectionRequest.findUnique({
-      where: { id: connReq.id },
-      include: {
-        toUser: { include: { externalAgent: true } },
-      },
+    const { event } = await createTestAgentEvent({
+      agentId: updatedAgent.id,
+      type: "CONNECTION_REQUEST",
+      payload: { requestId: "req-dispatch" },
     });
 
-    const agentRecord = request!.toUser.externalAgent;
-    expect(agentRecord!.status).toBe("SUSPENDED");
+    const step = buildStep();
+    await dispatchAgentEvent({
+      event: { data: { eventId: event.id } },
+      step,
+    } as any);
 
-    // evaluate-connection treats non-ACTIVE agents the same as no agent
-    await db.notification.create({
-      data: {
-        userId: request!.toUserId,
-        type: "CONNECTION_REQUEST",
-        title: "New connection request",
-        body: "Connect an agent to process requests automatically.",
-        metadata: { requestId: connReq.id },
-      },
+    expect(step.run).toHaveBeenCalledWith("deliver-webhook", expect.any(Function));
+    expect(dispatchWebhookMock).toHaveBeenCalledTimes(1);
+    expect(step.sleep).toHaveBeenCalledWith("wait-for-expiry", "24h");
+    expect(inngestSendMock).toHaveBeenCalledWith({
+      name: "agent/event.timeout",
+      data: { eventId: event.id },
     });
+  });
 
-    const notif = await db.notification.findFirst({
-      where: { userId: toUser.id },
+  it("does not attempt webhook delivery when event does not exist", async () => {
+    const step = buildStep();
+
+    await dispatchAgentEvent({
+      event: { data: { eventId: "missing-event-id" } },
+      step,
+    } as any);
+
+    expect(dispatchWebhookMock).not.toHaveBeenCalled();
+    expect(step.sleep).toHaveBeenCalledWith("wait-for-expiry", "24h");
+    expect(inngestSendMock).toHaveBeenCalledWith({
+      name: "agent/event.timeout",
+      data: { eventId: "missing-event-id" },
     });
-    expect(notif).not.toBeNull();
   });
 });
 
@@ -224,12 +179,12 @@ describe("Inngest Functions — expire-agent-events", () => {
     vi.clearAllMocks();
   });
 
-  it("should expire PENDING connection event and notify agent owner", async () => {
-    const fromUser = await createTestUser({ displayName: "Expiry From" });
-    const toUser = await createTestUser({ displayName: "Expiry To" });
-    const { agent } = await createTestAgent(toUser.id);
+  it("expires pending event once and notifies owner", async () => {
+    const fromUser = await createTestUser({ displayName: "Expire From" });
+    const toUser = await createTestUser({ displayName: "Expire To" });
+    const { agent } = await createTestAgent(toUser.id, "Expire Agent");
 
-    const connReq = await db.connectionRequest.create({
+    const request = await db.connectionRequest.create({
       data: {
         fromUserId: fromUser.id,
         toUserId: toUser.id,
@@ -237,91 +192,58 @@ describe("Inngest Functions — expire-agent-events", () => {
       },
     });
 
-    const { event } = await import("./helpers/seed").then((m) =>
-      m.createTestAgentEvent({
-        agentId: agent.id,
-        type: "CONNECTION_REQUEST",
-        connectionRequestId: connReq.id,
-        payload: { requestId: connReq.id },
-        expiresInMs: -1000, // already expired
-      }),
-    );
-
-    // Simulate expire-agent-events logic
-    const agentEvent = await db.agentEvent.findUnique({
-      where: { id: event.id },
-      include: {
-        externalAgent: true,
-        connectionRequest: true,
-      },
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      connectionRequestId: request.id,
+      payload: { requestId: request.id },
+      expiresInMs: -1000,
     });
 
-    expect(agentEvent!.status).toBe("PENDING");
+    await expireAgentEvents({
+      event: { data: { eventId: event.id } },
+      step: buildStep(),
+    } as any);
+    await expireAgentEvents({
+      event: { data: { eventId: event.id } },
+      step: buildStep(),
+    } as any);
 
-    await db.agentEvent.update({
-      where: { id: event.id },
-      data: { status: "EXPIRED" },
-    });
+    const updatedEvent = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updatedEvent!.status).toBe("EXPIRED");
 
-    // Notify agent owner about expiry
-    if (agentEvent!.connectionRequest && agentEvent!.externalAgent.userId) {
-      await db.notification.create({
-        data: {
-          userId: agentEvent!.externalAgent.userId!,
-          type: "AGENT_DECISION",
-          title: "Agent event expired",
-          body: "A connection request event was not handled in time.",
-          metadata: { eventId: event.id, requestId: connReq.id },
-        },
-      });
-    }
-
-    // Verify event is now EXPIRED
-    const expired = await db.agentEvent.findUnique({ where: { id: event.id } });
-    expect(expired!.status).toBe("EXPIRED");
-
-    // Verify owner notification
-    const notif = await db.notification.findFirst({
+    const notifications = await db.notification.findMany({
       where: { userId: toUser.id, type: "AGENT_DECISION" },
     });
-    expect(notif).not.toBeNull();
-    expect(notif!.title).toBe("Agent event expired");
-    expect(notif!.body).toContain("not handled in time");
+    expect(notifications).toHaveLength(1);
   });
 
-  it("should NOT expire events that are already DECIDED", async () => {
-    const user = await createTestUser({ displayName: "Decided User" });
-    const { agent } = await createTestAgent(user.id);
+  it("does not modify decided events", async () => {
+    const owner = await createTestUser({ displayName: "Decided Owner" });
+    const { agent } = await createTestAgent(owner.id, "Decided Agent");
 
-    const { event } = await import("./helpers/seed").then((m) =>
-      m.createTestAgentEvent({
-        agentId: agent.id,
-        type: "CONNECTION_REQUEST",
-        payload: { test: true },
-      }),
-    );
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      payload: { test: true },
+    });
 
-    // Mark as DECIDED (agent already handled it)
     await db.agentEvent.update({
       where: { id: event.id },
       data: { status: "DECIDED" },
     });
 
-    // Simulate expire check — should skip
-    const agentEvent = await db.agentEvent.findUnique({
-      where: { id: event.id },
-    });
+    await expireAgentEvents({
+      event: { data: { eventId: event.id } },
+      step: buildStep(),
+    } as any);
 
-    if (agentEvent!.status !== "PENDING" && agentEvent!.status !== "DELIVERED") {
-      // expire-agent-events returns early here
-    }
-
-    // Verify it stays DECIDED
     const check = await db.agentEvent.findUnique({ where: { id: event.id } });
     expect(check!.status).toBe("DECIDED");
 
-    // No expiry notifications should be created
-    const notifs = await db.notification.findMany();
-    expect(notifs).toHaveLength(0);
+    const notifications = await db.notification.findMany({
+      where: { userId: owner.id, type: "AGENT_DECISION" },
+    });
+    expect(notifications).toHaveLength(0);
   });
 });
