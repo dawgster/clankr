@@ -218,6 +218,85 @@ describe("Inngest Functions — expire-agent-events", () => {
     expect(notifications).toHaveLength(1);
   });
 
+  it("expires DELIVERED events that were not decided", async () => {
+    const fromUser = await createTestUser({ displayName: "Delivered From" });
+    const toUser = await createTestUser({ displayName: "Delivered To" });
+    const { agent } = await createTestAgent(toUser.id, "Delivered Agent");
+
+    const request = await db.connectionRequest.create({
+      data: {
+        fromUserId: fromUser.id,
+        toUserId: toUser.id,
+        intent: "Delivered but not decided",
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      connectionRequestId: request.id,
+      payload: { requestId: request.id },
+      expiresInMs: -1000,
+    });
+
+    // Simulate that the webhook was delivered but never decided
+    await db.agentEvent.update({
+      where: { id: event.id },
+      data: { status: "DELIVERED", webhookAttempts: 1, lastWebhookAt: new Date() },
+    });
+
+    await expireAgentEvents({
+      event: { data: { eventId: event.id } },
+      step: buildStep(),
+    } as any);
+
+    const updatedEvent = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updatedEvent!.status).toBe("EXPIRED");
+
+    const notifications = await db.notification.findMany({
+      where: { userId: toUser.id, type: "AGENT_DECISION" },
+    });
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("creates notification with correct title, body, and metadata", async () => {
+    const fromUser = await createTestUser({ displayName: "Notif From" });
+    const toUser = await createTestUser({ displayName: "Notif To" });
+    const { agent } = await createTestAgent(toUser.id, "Notif Agent");
+
+    const request = await db.connectionRequest.create({
+      data: {
+        fromUserId: fromUser.id,
+        toUserId: toUser.id,
+        intent: "Check notification content",
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      connectionRequestId: request.id,
+      payload: { requestId: request.id },
+      expiresInMs: -1000,
+    });
+
+    await expireAgentEvents({
+      event: { data: { eventId: event.id } },
+      step: buildStep(),
+    } as any);
+
+    const notifications = await db.notification.findMany({
+      where: { userId: toUser.id, type: "AGENT_DECISION" },
+    });
+    expect(notifications).toHaveLength(1);
+
+    const notif = notifications[0];
+    expect(notif.title).toBe("Agent event expired");
+    expect(notif.body).toBe("A connection request event was not handled in time.");
+    expect((notif.metadata as Record<string, string>).eventId).toBe(event.id);
+    expect((notif.metadata as Record<string, string>).requestId).toBe(request.id);
+  });
+
   it("does not modify decided events", async () => {
     const owner = await createTestUser({ displayName: "Decided Owner" });
     const { agent } = await createTestAgent(owner.id, "Decided Agent");

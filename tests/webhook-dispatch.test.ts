@@ -200,6 +200,145 @@ describe("Webhook Dispatch", () => {
     expect(opts.headers["Authorization"]).toBeUndefined();
   });
 
+  it("should handle fetch abort (timeout) as a failed delivery", async () => {
+    const user = await createTestUser({ displayName: "Timeout User" });
+    const { agent } = await createTestAgent(user.id);
+
+    const updatedAgent = await db.externalAgent.update({
+      where: { id: agent.id },
+      data: {
+        gatewayUrl: "http://slow-gateway.test",
+        webhookEnabled: true,
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      payload: { test: true },
+    });
+
+    // Simulate AbortController timeout (DOMException with AbortError)
+    globalThis.fetch = vi.fn().mockRejectedValue(
+      new DOMException("The operation was aborted", "AbortError"),
+    );
+
+    const result = await dispatchWebhook(updatedAgent, event);
+    expect(result).toBe(false);
+
+    const updated = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updated!.status).toBe("PENDING");
+    expect(updated!.webhookAttempts).toBe(1);
+    expect(updated!.lastWebhookAt).not.toBeNull();
+  });
+
+  it("should treat HTTP 4xx responses as failed delivery", async () => {
+    const user = await createTestUser({ displayName: "4xx User" });
+    const { agent } = await createTestAgent(user.id);
+
+    const updatedAgent = await db.externalAgent.update({
+      where: { id: agent.id },
+      data: {
+        gatewayUrl: "http://client-error-gateway.test",
+        webhookEnabled: true,
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      payload: { test: true },
+    });
+
+    // Mock 404 response
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("Not Found", { status: 404 }),
+    );
+
+    const result = await dispatchWebhook(updatedAgent, event);
+    expect(result).toBe(false);
+
+    const updated = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updated!.status).toBe("PENDING");
+    expect(updated!.webhookAttempts).toBe(1);
+  });
+
+  it("should dispatch NEW_MESSAGE events with correct type in payload", async () => {
+    const user = await createTestUser({ displayName: "Msg Hook User" });
+    const { agent } = await createTestAgent(user.id);
+
+    const updatedAgent = await db.externalAgent.update({
+      where: { id: agent.id },
+      data: {
+        gatewayUrl: "http://msg-gateway.test",
+        gatewayToken: "msg-token",
+        webhookEnabled: true,
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "NEW_MESSAGE",
+      payload: { threadId: "thread-123", content: "Hello from agent" },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("OK", { status: 200 }),
+    );
+
+    const result = await dispatchWebhook(updatedAgent, event);
+    expect(result).toBe(true);
+
+    const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse(opts.body);
+    expect(body.type).toBe("NEW_MESSAGE");
+    expect(body.payload).toEqual({ threadId: "thread-123", content: "Hello from agent" });
+    expect(body.eventId).toBe(event.id);
+    expect(body.callbackUrl).toContain(`/api/v1/agent/events/${event.id}/decide`);
+
+    const updated = await db.agentEvent.findUnique({ where: { id: event.id } });
+    expect(updated!.status).toBe("DELIVERED");
+  });
+
+  it("should send exact expected payload structure", async () => {
+    const user = await createTestUser({ displayName: "Payload User" });
+    const { agent } = await createTestAgent(user.id);
+
+    const updatedAgent = await db.externalAgent.update({
+      where: { id: agent.id },
+      data: {
+        gatewayUrl: "http://payload-gateway.test",
+        webhookEnabled: true,
+      },
+    });
+
+    const { event } = await createTestAgentEvent({
+      agentId: agent.id,
+      type: "CONNECTION_REQUEST",
+      payload: { requestId: "req-456", fromUser: { name: "Alice" } },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("OK", { status: 200 }),
+    );
+
+    await dispatchWebhook(updatedAgent, event);
+
+    const [url, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("http://payload-gateway.test/hooks/agent");
+    expect(opts.method).toBe("POST");
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
+
+    const body = JSON.parse(opts.body);
+    expect(body).toEqual({
+      eventId: event.id,
+      type: "CONNECTION_REQUEST",
+      payload: { requestId: "req-456", fromUser: { name: "Alice" } },
+      callbackUrl: `http://localhost:3000/api/v1/agent/events/${event.id}/decide`,
+      expiresAt: event.expiresAt.toISOString(),
+    });
+  });
+
   it("should accumulate webhookAttempts across multiple calls", async () => {
     const user = await createTestUser({ displayName: "Multi Attempt" });
     const { agent } = await createTestAgent(user.id);
